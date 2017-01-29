@@ -45,7 +45,7 @@ const int __externalInterruptRequest1PinMode = INPUT_PULLUP;
 // Analog data acquisition buffer
 const int __adcNumChannels = 6;
 const int __adcChannels[__adcNumChannels] = {0, 1, 2, 3, 4, 5};
-const int __adcMaxBufferSize = 550;
+const int __adcMaxBufferSize = 500;
 
 // Reward delivery
 const int __rewardNumOutputPins = 1;
@@ -56,7 +56,7 @@ const int __pelletMaxAttempts = 11;
 // Event listeners
 const int __eventListenersNumInputPins = 1;
 const int __eventListener0Pin = __externalInterruptRequest1;
-const int __eventListenersMaxEvents = 10;
+const int __eventListenersMaxEvents = 30;
 
 // Command codes
 const int __maxInstructionLength = 100;
@@ -94,6 +94,8 @@ unsigned long adcScheduleOnset = 0;
 volatile unsigned long adcLastTick;
 int adcNumScheduledChannels;
 int adcNumScheduledFrames;
+int adcNumRequestedFrames;
+int adcNumRequestedBytes;
 int adcScheduledChannelList[__adcNumChannels];
 
 // Pellet delivery--on rewardOutputPin0, controlled via externalInterruptRequest0
@@ -346,6 +348,7 @@ void writeAdcSchedule() {
   Serial.write((byte*)&adcNumScheduledFrames, sizeof(adcNumScheduledFrames));
   Serial.write((byte*)&adcScheduleOnsetDelay, sizeof(adcScheduleOnsetDelay));
   Serial.write(adcUseRingBuffer);
+  Serial.write((byte*)&adcNumRequestedFrames, sizeof(adcNumRequestedFrames));
 }
 
 /*
@@ -362,12 +365,21 @@ void writeAdcStatus() {
 */
 void writeAdcBuffer() {
   int adcBufferIndex__ = adcBufferIndex;
+  int startIndex;
   unsigned long adcLastTick__ = adcLastTick;
   unsigned long t;
 
+  startIndex = (adcBufferIndex__ - adcNumRequestedFrames * adcNumScheduledChannels) % adcBufferSize;
+
   t = micros();
-  Serial.write((byte*)&adcBuffer[adcBufferIndex__], sizeof(adcBuffer[0]) * (adcBufferSize - adcBufferIndex__));
-  Serial.write((byte*)&adcBuffer[0], sizeof(adcBuffer[0])*adcBufferIndex__);
+  if (adcBufferIndex__ >= adcNumRequestedBytes)
+    Serial.write((byte*)&adcBuffer[adcBufferIndex__ - adcNumRequestedBytes], sizeof(adcBuffer[0])*adcNumRequestedBytes);
+  else {
+    Serial.write((byte*)&adcBuffer[adcBufferSize - adcNumRequestedBytes + adcBufferIndex__], sizeof(adcBuffer[0]) * (adcNumRequestedBytes - adcBufferIndex__));
+    Serial.write((byte*)&adcBuffer[0], sizeof(adcBuffer[0])*adcBufferIndex__);
+  }
+  //  Serial.write((byte*)&adcBuffer[adcBufferIndex__], sizeof(adcBuffer[0]) * (adcBufferSize - adcBufferIndex__));
+  // Serial.write((byte*)&adcBuffer[0], sizeof(adcBuffer[0])*adcBufferIndex__);
   Serial.write((byte*)&adcLastTick__, sizeof(adcLastTick__));
   t = micros() - t;
   Serial.write((byte*)&t, sizeof(t));
@@ -454,7 +466,9 @@ void readAdcSchedule() {
   adcNumScheduledFrames = bytes2int(&instruction[adcNumScheduledChannels + 1]);
   adcScheduleOnsetDelay = bytes2int(&instruction[adcNumScheduledChannels + 3]);
   adcUseRingBuffer = (instruction[adcNumScheduledChannels + 5] > 0);
+  adcNumRequestedFrames = bytes2int(&instruction[adcNumScheduledChannels + 6]);
   adcBufferSize = adcNumScheduledFrames * adcNumScheduledChannels;
+  adcNumRequestedBytes = adcNumRequestedFrames * adcNumScheduledChannels;
 }
 /*
   Interrupt service routine triggered at INT0_vect (external interrupt request 0, pin D2)

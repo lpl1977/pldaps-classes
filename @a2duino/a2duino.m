@@ -42,11 +42,12 @@ classdef a2duino < handle
         
         adcSchedule = struct(...
             'samplingRate',[],...
-            'numScheduledChannels',1,...
-            'scheduledChannelList',1,...
+            'numScheduledChannels',2,...
+            'scheduledChannelList',[1 2],...
             'numScheduledFrames',1000,...
             'onsetDelay',0,...
-            'useRingBuffer',true);
+            'useRingBuffer',true,...,
+            'numRequestedFrames',1000);
     end
     
     properties (Constant,Hidden)
@@ -170,17 +171,21 @@ classdef a2duino < handle
             output.numScheduledFrames = fread(obj.serialObj,1,'int16');
             output.onsetDelay = fread(obj.serialObj,1,'int16');
             output.useRingBuffer = fread(obj.serialObj,1,'uint8');
+            output.numRequestedFrames = fread(obj.serialObj,1,'int16');
+            
         end
         
         %  Get ADC Buffer
         function output = getAdcBuffer(obj)
-            fwrite(obj.serialObj,obj.commandGetAdcBuffer);            
-            output.bufferData = fread(obj.serialObj,[obj.adcSchedule.numScheduledChannels,obj.adcSchedule.numScheduledFrames],'int16');
+            fwrite(obj.serialObj,obj.commandGetAdcBuffer);                
+            output.bufferData = fread(obj.serialObj,[obj.adcSchedule.numScheduledChannels,obj.adcSchedule.numRequestedFrames],'int16');
+            %output.bufferData = fread(obj.serialObj,[obj.adcSchedule.numScheduledChannels,obj.adcSchedule.numScheduledFrames],'int16');
             output.timeStamp = fread(obj.serialObj,1,'uint32');
             output.writeTime = fread(obj.serialObj,1,'uint32');
             output.timeStamp = 1000*output.timeStamp/obj.adcSchedule.samplingRate;
-            output.timeBase = (output.timeStamp+(1-obj.adcSchedule.numScheduledFrames:1:0)*1000/obj.adcSchedule.samplingRate);
-            if(~isempty(obj.lastSampleTime))
+            output.timeBase = (output.timeStamp+(1-obj.adcSchedule.numRequestedFrames:1:0)*1000/obj.adcSchedule.samplingRate);
+            %output.timeBase = (output.timeStamp+(1-obj.adcSchedule.numScheduledFrames:1:0)*1000/obj.adcSchedule.samplingRate);
+           if(~isempty(obj.lastSampleTime))
                 ix = output.timeBase > obj.lastSampleTime;
                 output.timeBase = output.timeBase(ix);
                 output.bufferData = output.bufferData(:,ix);
@@ -221,14 +226,16 @@ classdef a2duino < handle
             obj.adcSchedule.numScheduledChannels = min(obj.adcNumChannels,length(obj.adcSchedule.scheduledChannelList));
             obj.adcSchedule.scheduledChannelList = obj.adcSchedule.scheduledChannelList(1:obj.adcSchedule.numScheduledChannels);
             obj.adcSchedule.numScheduledFrames = min(obj.adcSchedule.numScheduledFrames,floor(obj.adcMaxBufferSize / obj.adcSchedule.numScheduledChannels));
+            obj.adcSchedule.numRequestedFrames = min(obj.adcSchedule.numRequestedFrames,obj.adcSchedule.numScheduledFrames);
             obj.adcBufferSize = obj.adcSchedule.numScheduledFrames*obj.adcSchedule.numScheduledChannels;            
             fwrite(obj.serialObj,obj.commandSetAdcSchedule);
-            fwrite(obj.serialObj,uint8(6+obj.adcSchedule.numScheduledChannels));
+            fwrite(obj.serialObj,uint8(8+obj.adcSchedule.numScheduledChannels));
             fwrite(obj.serialObj,uint8(obj.adcSchedule.numScheduledChannels));
             fwrite(obj.serialObj,uint8(obj.adcSchedule.scheduledChannelList-1));
             fwrite(obj.serialObj,typecast(int16(obj.adcSchedule.numScheduledFrames),'uint8'));
             fwrite(obj.serialObj,typecast(int16(obj.adcSchedule.onsetDelay),'uint8'));
             fwrite(obj.serialObj,uint8(obj.adcSchedule.useRingBuffer));
+            fwrite(obj.serialObj,typecast(int16(obj.adcSchedule.numRequestedFrames),'uint8'));
         end
         
         %  Start ADC schedule
