@@ -10,7 +10,7 @@ classdef stateControl < handle
     properties
         currentState
         nextState = 'start';
-        stateDuration
+        stateDuration = Inf;
     end
     
     properties (Dependent = true)
@@ -34,15 +34,17 @@ classdef stateControl < handle
         end
         
         %  State transition control
-        function outcome = firstEntryIntoState(obj)
+        function outcome = firstEntryIntoState(obj,varargin)            
             outcome = ~strcmpi(obj.nextState,obj.currentState);
             if(outcome)
+                if(nargin==2)
+                    obj.stateDuration = varargin{1};
+                end
                 obj.currentState = obj.nextState;
                 obj.stateEntryTime = GetSecs;
                 obj.numTransitions = obj.numTransitions+1;
                 obj.transitionLog.state{obj.numTransitions} = obj.nextState;
                 obj.transitionLog.stateEntryTime(obj.numTransitions) = obj.stateEntryTime;
-                obj.stateDuration = Inf;
             end
         end
         

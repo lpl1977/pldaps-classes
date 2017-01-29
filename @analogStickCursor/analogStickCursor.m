@@ -9,8 +9,8 @@ classdef analogStickCursor
     
     properties (Hidden)
         defaultFeatures = struct(...
-            'linewidth',6,...
-            'height',20,...
+            'linewidth',8,...
+            'height',30,...
             'color',[0 0 0]);
     end
         
@@ -29,23 +29,32 @@ classdef analogStickCursor
         function drawCursor(obj,varargin)
             if(obj.visible)
                 screenPos = varargin{1};
-                feval(obj.cfh,screenPos,varargin{2:end});
+                if(nargin>2 && isa(varargin{2},'function_handle'))
+                    feval(varargin{2},screenPos,varargin{3:end});
+                else
+                    feval(obj.cfh,screenPos,varargin{2:end});
+                end
             end
         end
         
         %  Default cursor
         %
-        %  Draw default cursor based on features in provided screen
-        %  position        
-        function defaultCursor(obj,screenPos)            
-            w = obj.defaultFeatures.linewidth;
-            h = obj.defaultFeatures.height;
-            color = obj.defaultFeatures.color;            
+        %  Draw default cursor based on default features and provided
+        %  screen position; optional arguments will supercede defaults
+        function defaultCursor(obj,screenPos,varargin)
+            features = obj.defaultFeatures;
+            for i=1:2:nargin-2
+                if(isfield(features,varargin{i}))
+                    features.(varargin{i}) = varargin{i+1};
+                end
+            end
+            w = features.linewidth;
+            h = features.height;
+            color = features.color;                               
             baseRect = [-w/2 -h/2 ; h/2 w/2 ; w/2 h/2 ; -h/2 -w/2];            
             centeredRect = CenterRectOnPoint(baseRect,screenPos(1),screenPos(2));            
             Screen('FillRect',obj.windowPointer,color,centeredRect);
         end
     end
-    
 end
 
