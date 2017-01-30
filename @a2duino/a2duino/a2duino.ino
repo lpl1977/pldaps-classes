@@ -20,7 +20,7 @@
 */
 
 // Serial communication
-const unsigned long __baud = 115200;
+const unsigned long __baud = 230400;
 
 // Timers
 // (CMR = 12499, prescalar = 256) give a sampling rate of 5 Hz
