@@ -210,7 +210,7 @@ classdef a2duino < handle
         end
     
         %  Get time since start (msec)
-        function output = getTimeSinceStart(obj,varargin)
+        function output = getTicksSinceStart(obj,varargin)
             controlFlag = varargin{1};
             switch controlFlag
                 case 'send'

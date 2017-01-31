@@ -114,6 +114,9 @@ classdef analogStick < handle
                     hC = obj.horizontalChannel;
                     vC = obj.verticalChannel;
                     outcome = (isempty(hC) || abs(V(hC+1))<6) && (isempty(vC) || abs(V(vC+1))<6);
+                    
+                case 'a2duino.adc'
+                    outcome = true;
             end
         end
         
