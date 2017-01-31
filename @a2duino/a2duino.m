@@ -37,21 +37,13 @@ classdef a2duino < handle
     %  D13 - TTL output:  debug pin
     
     properties
-        %  serial port object
         serialObj
-        
-        adcSchedule = struct(...
-            'samplingRate',[],...
-            'numScheduledChannels',2,...
-            'scheduledChannelList',[1 2],...
-            'numScheduledFrames',1000,...
-            'onsetDelay',0,...
-            'useRingBuffer',true,...,
-            'numRequestedFrames',1000);
+        adcSchedule
     end
     
     properties (SetAccess=private)
         commandQueue = cell(0);
+        resultBuffer = struct([]);
     end
     
     properties (Constant,Hidden)
@@ -75,13 +67,13 @@ classdef a2duino < handle
         commandSetAdcSchedule = uint8(50);
         
         %  Constants related to Arduino communication
-        portName = '/dev/ttyACM0';
-        baud = 230400;
-        inputBufferSize = 2048;
         bytesSentAtStart = 18;
     end
     
-    properties (Hidden)
+    properties (SetAccess=private,Hidden)
+        adcScheduleRunning
+        eventListener0Listening
+        
         compareMatchRegister1
         prescalar1
         clockRate1
@@ -99,110 +91,188 @@ classdef a2duino < handle
     end
     
     methods
+        
         %  Class constructor
-        function obj = a2duino(varargin)
+        function obj = a2duino(verbose,varargin)
             
-            %  Create and open serial port object
-            obj.serialObj = serial(obj.portName,'baud',obj.baud);
-            obj.serialObj.InputBufferSize = obj.inputBufferSize;
-            fopen(obj.serialObj);
+            %  Create ADC schedule
+            obj.adcSchedule = a2duino.adcSchedule(varargin);
+            
+            %  Create serial port object
+            obj.serialObj = a2duino.serial(varargin);        
+            
+            %  Open serial port connection
+            fopen(obj.serialObj.connection);
             
             %  Read Arduino settings from serial
-            while (obj.serialObj.BytesAvailable < obj.bytesSentAtStart)
+            while (obj.serialObj.connection.BytesAvailable < obj.bytesSentAtStart)
             end
-            obj.compareMatchRegister1 = fread(obj.serialObj,1,'int16');
-            obj.prescalar1 = fread(obj.serialObj,1,'int16');
-            obj.compareMatchRegister2 = fread(obj.serialObj,1,'int16');
-            obj.prescalar2 = fread(obj.serialObj,1,'int16');
-            obj.adcMaxBufferSize = fread(obj.serialObj,1,'int16');
-            obj.adcNumChannels = fread(obj.serialObj,1,'int16');
-            obj.rewardNumPins = fread(obj.serialObj,1,'int16');
-            obj.eventNumPins = fread(obj.serialObj,1,'int16');
-            obj.eventMaxNumDetections = fread(obj.serialObj,1,'int16');
+            obj.compareMatchRegister1 = fread(obj.serialObj.connection,1,'int16');
+            obj.prescalar1 = fread(obj.serialObj.connection,1,'int16');
+            obj.compareMatchRegister2 = fread(obj.serialObj.connection,1,'int16');
+            obj.prescalar2 = fread(obj.serialObj.connection,1,'int16');
+            obj.adcMaxBufferSize = fread(obj.serialObj.connection,1,'int16');
+            obj.adcNumChannels = fread(obj.serialObj.connection,1,'int16');
+            obj.rewardNumPins = fread(obj.serialObj.connection,1,'int16');
+            obj.eventNumPins = fread(obj.serialObj.connection,1,'int16');
+            obj.eventMaxNumDetections = fread(obj.serialObj.connection,1,'int16');
             
             %  Determine sampling rates and smallest time step
             obj.clockRate1 = 16e6 / (obj.prescalar1*(obj.compareMatchRegister1 + 1));
             obj.clockRate2 = 16e6 / (obj.prescalar2*(obj.compareMatchRegister2 + 1));
             obj.timeStep = 1000/obj.clockRate2;
             
-            if(nargin>0)
-                option = varargin{1};
-                if(strcmpi(option,'verbose'))
-                    fprintf('Opened serial port %s at %d Bd\n\n',obj.portName,obj.baud);
-                    fprintf('            compare match register1:  %d\n',obj.compareMatchRegister1);
-                    fprintf('                         prescalar1:  %d\n',obj.prescalar1);
-                    fprintf('                        clock1 rate:  %d Hz\n',obj.clockRate1);
-                    fprintf('            compare match register2:  %d\n',obj.compareMatchRegister2);
-                    fprintf('                         prescalar2:  %d\n',obj.prescalar2);
-                    fprintf('                        clock2 rate:  %d Hz\n',obj.clockRate2);
-                    fprintf('            maximum ADC buffer size:  %d samples of type int16\n',obj.adcMaxBufferSize);
-                    fprintf('             number of ADC channels:  %d\n',obj.adcNumChannels);
-                    fprintf('      number of reward control pins:  %d\n',obj.rewardNumPins);
-                    fprintf('     number of event detection pins:  %d\n',obj.eventNumPins);
-                    fprintf('maximum number of detections stored:  %d\n',obj.eventMaxNumDetections);
-                end
+            if(verbose)
+                fprintf('Opened serial port %s at %d Bd\n\n',obj.serialObj.portName,obj.serialObj.baud);
+                fprintf('            compare match register1:  %d\n',obj.compareMatchRegister1);
+                fprintf('                         prescalar1:  %d\n',obj.prescalar1);
+                fprintf('                        clock1 rate:  %d Hz\n',obj.clockRate1);
+                fprintf('            compare match register2:  %d\n',obj.compareMatchRegister2);
+                fprintf('                         prescalar2:  %d\n',obj.prescalar2);
+                fprintf('                        clock2 rate:  %d Hz\n',obj.clockRate2);
+                fprintf('            maximum ADC buffer size:  %d samples of type int16\n',obj.adcMaxBufferSize);
+                fprintf('             number of ADC channels:  %d\n',obj.adcNumChannels);
+                fprintf('      number of reward control pins:  %d\n',obj.rewardNumPins);
+                fprintf('     number of event detection pins:  %d\n',obj.eventNumPins);
+                fprintf('maximum number of detections stored:  %d\n',obj.eventMaxNumDetections);
             end
-        end
+        end        
         
         %  Class destructor
         function delete(obj)
-            fclose(obj.serialObj);
+            obj.close;
         end
         
         %  Close the connection
         function close(obj)
-            fclose(obj.serialObj);
+            fclose(obj.serialObj.connection);
         end
         
+        %  Check connection
+        function output = connectionOpen(obj)
+            output = strcmpi(obj.serialObj.connection.Status,'open');
+        end
+        
+        %  Set ADC schedule
+        function obj = setAdcSchedule(obj)
+            
+            %  Stop ADC schedule before changing
+            if(obj.adcScheduleRunning)
+                obj.stopAdcSchedule;
+            end
+            
+            %  Set schedule based on validity
+            obj.adcSchedule.samplingRate = obj.clockRate2;
+            obj.adcSchedule.numScheduledChannels = min(obj.adcNumChannels,length(obj.adcSchedule.scheduledChannelList));
+            obj.adcSchedule.scheduledChannelList = obj.adcSchedule.scheduledChannelList(1:obj.adcSchedule.numScheduledChannels);
+            obj.adcSchedule.numScheduledFrames = min(obj.adcSchedule.numScheduledFrames,floor(obj.adcMaxBufferSize / obj.adcSchedule.numScheduledChannels));
+            obj.adcSchedule.numRequestedFrames = min(obj.adcSchedule.numRequestedFrames,obj.adcSchedule.numScheduledFrames);
+            obj.adcBufferSize = obj.adcSchedule.numScheduledFrames*obj.adcSchedule.numScheduledChannels;
+            
+            %  Write adjusted schedule
+            fwrite(obj.serialObj.connection,obj.commandSetAdcSchedule);
+            fwrite(obj.serialObj.connection,uint8(8+obj.adcSchedule.numScheduledChannels));
+            fwrite(obj.serialObj.connection,uint8(obj.adcSchedule.numScheduledChannels));
+            fwrite(obj.serialObj.connection,uint8(obj.adcSchedule.scheduledChannelList-1));
+            fwrite(obj.serialObj.connection,typecast(int16(obj.adcSchedule.numScheduledFrames),'uint8'));
+            fwrite(obj.serialObj.connection,typecast(int16(obj.adcSchedule.onsetDelay),'uint8'));
+            fwrite(obj.serialObj.connection,uint8(obj.adcSchedule.useRingBuffer));
+            fwrite(obj.serialObj.connection,typecast(int16(obj.adcSchedule.numRequestedFrames),'uint8'));
+        end
+        
+        %  Start ADC schedule
+        function obj = startAdcSchedule(obj)
+            obj.adcScheduleRunning = true;
+            fwrite(obj.serialObj.connection,obj.commandStartAdcSchedule);
+        end
+        
+        %  Stop ADC schedule
+        function obj = stopAdcSchedule(obj)
+            obj.adcScheduleRunning = false;
+            fwrite(obj.serialObj.connection,obj.commandStopAdcSchedule);
+        end
+        
+        %  Start Event listener
+        function obj = startEventListener0(obj)
+            obj.eventListener0Listening = true;
+            fwrite(obj.serialObj.connection,obj.commandStartEventListener0);
+        end
+        
+        %  Stop Event Listener
+        function obj = stopEventListener0(obj)
+            obj.eventListener0Listening = false;
+            fwrite(obj.serialObj.connection,obj.commandStopEventListener0);
+        end
+        
+        %  Start Pellet Release
+        function obj = startPelletRelease(obj)
+            fwrite(obj.serialObj.connection,obj.commandStartPelletRelease);
+        end
+    
         %  Get time since start (msec)
         function output = getTimeSinceStart(obj,varargin)
             controlFlag = varargin{1};
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetTicksSinceStart);
+                    fwrite(obj.serialObj.connection,obj.commandGetTicksSinceStart);
                 case 'receive'
-                    output = fread(obj.serialObj,1,'uint32')*obj.timeStep;
+                    output = fread(obj.serialObj.connection,1,'uint32')*obj.timeStep;
             end
         end
         
         %  Get ADC voltages
         function output = getAdcVoltages(obj,varargin)
-            controlFlag = varargin{1};
+            if(nargin==1)
+                fwrite(obj.serialObj.connection,obj.commandGetAdcVoltages);
+                controlFlag = 'receive';
+            else
+                controlFlag = varargin{1};
+            end
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetAdcVoltages);
+                    fwrite(obj.serialObj.connection,obj.commandGetAdcVoltages);
                 case 'receive'
-                    num = fread(obj.serialObj,1,'int16');
-                    output = fread(obj.serialObj,num,'int16');
+                    num = fread(obj.serialObj.connection,1,'int16');
+                    output = fread(obj.serialObj.connection,num,'int16');
             end
         end
         
         %  Get ADC Schedule
-        function output = getAdcSchedule(obj,varargin)
-            controlFlag = varargin{1};
+        function output = getAdcSchedule(obj,varargin)            
+            if(nargin==1)
+                fwrite(obj.serialObj.connection,obj.commandGetAdcSchedule);
+                controlFlag = 'receive';
+            else
+                controlFlag = varargin{1};
+            end
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetAdcSchedule);
+                    fwrite(obj.serialObj.connection,obj.commandGetAdcSchedule);
                 case 'receive'
-                    output.numScheduledChannels = fread(obj.serialObj,1,'int16');
-                    output.scheduledChannelList = fread(obj.serialObj,output.numScheduledChannels,'int16')+1;
-                    output.numScheduledFrames = fread(obj.serialObj,1,'int16');
-                    output.onsetDelay = fread(obj.serialObj,1,'int16');
-                    output.useRingBuffer = fread(obj.serialObj,1,'uint8');
-                    output.numRequestedFrames = fread(obj.serialObj,1,'int16');
+                    output.numScheduledChannels = fread(obj.serialObj.connection,1,'int16');
+                    output.scheduledChannelList = fread(obj.serialObj.connection,output.numScheduledChannels,'int16')+1;
+                    output.numScheduledFrames = fread(obj.serialObj.connection,1,'int16');
+                    output.onsetDelay = fread(obj.serialObj.connection,1,'int16');
+                    output.useRingBuffer = fread(obj.serialObj.connection,1,'uint8');
+                    output.numRequestedFrames = fread(obj.serialObj.connection,1,'int16');
             end
         end
         
         %  Get ADC Buffer
-        function output = getAdcBuffer(obj,varargin)
-            controlFlag = varargin{1};
+        function output = getAdcBuffer(obj,varargin)            
+            if(nargin==1)
+                fwrite(obj.serialObj.connection,obj.commandGetAdcBuffer);
+                controlFlag = 'receive';
+            else
+                controlFlag = varargin{1};
+            end
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetAdcBuffer);
+                    fwrite(obj.serialObj.connection,obj.commandGetAdcBuffer);
                 case 'receive'
-                    output.bufferData = fread(obj.serialObj,[obj.adcSchedule.numScheduledChannels,obj.adcSchedule.numRequestedFrames],'int16');
-                    output.timeStamp = fread(obj.serialObj,1,'uint32');
-                    output.writeTime = fread(obj.serialObj,1,'uint32');
+                    output.bufferData = fread(obj.serialObj.connection,[obj.adcSchedule.numScheduledChannels,obj.adcSchedule.numRequestedFrames],'int16');
+                    output.timeStamp = fread(obj.serialObj.connection,1,'uint32');
+                    output.writeTime = fread(obj.serialObj.connection,1,'uint32');
                     output.timeStamp = 1000*output.timeStamp/obj.adcSchedule.samplingRate;
                     output.timeBase = (output.timeStamp+(1-obj.adcSchedule.numRequestedFrames:1:0)*1000/obj.adcSchedule.samplingRate);
                     if(~isempty(obj.lastSampleTime))
@@ -217,26 +287,37 @@ classdef a2duino < handle
         end
         
         %  Get ADC status
-        function output = getAdcStatus(obj,varargin)
-            controlFlag = varargin{1};
+        function output = getAdcStatus(obj,varargin)            
+            if(nargin==1)
+                fwrite(obj.serialObj.connection,obj.commandGetAdcStatus);
+                controlFlag = 'receive';
+            else
+                controlFlag = varargin{1};
+            end
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetAdcStatus);
+                    fwrite(obj.serialObj.connection,obj.commandGetAdcStatus);
                 case 'receive'
-                    output = fread(obj.serialObj,1,'uint8');
+                    output = fread(obj.serialObj.connection,1,'uint8');
+                    obj.adcScheduleRunning = ~~output;
             end
         end
         
         %  Get Event Listner
-        function output = getEventListener0(obj,varargin)
-            controlFlag = varargin{1};
+        function output = getEventListener0(obj,varargin)            
+            if(nargin==1)
+                fwrite(obj.serialObj.connection,obj.commandGetEventListener0);
+                controlFlag = 'receive';
+            else
+                controlFlag = varargin{1};
+            end
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetEventListener0);
+                    fwrite(obj.serialObj.connection,obj.commandGetEventListener0);
                 case 'receive'
-                    numEvents = fread(obj.serialObj,1,'int16');
+                    numEvents = fread(obj.serialObj.connection,1,'int16');
                     if(numEvents > 0)
-                        output = fread(obj.serialObj,numEvents,'uint32');
+                        output = fread(obj.serialObj.connection,numEvents,'uint32');
                     else
                         output = [];
                     end
@@ -244,81 +325,54 @@ classdef a2duino < handle
         end
         
         %  Get pellet release status
-        function output = getPelletReleaseStatus(obj,varargin)
-            controlFlag = varargin{1};
+        function output = getPelletReleaseStatus(obj,varargin)            
+            if(nargin==1)
+                fwrite(obj.serialObj.connection,obj.commandGetPelletReleaseStatus);
+                controlFlag = 'receive';
+            else
+                controlFlag = varargin{1};
+            end
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetPelletReleaseStatus);
+                    fwrite(obj.serialObj.connection,obj.commandGetPelletReleaseStatus);
                 case 'receive'
-                    output.dropMade = fread(obj.serialObj,1,'uint8');
-                    output.dropTime = fread(obj.serialObj,1,'uint32');
-                    output.numAttempts = fread(obj.serialObj,1,'int16');
+                    output.dropMade = fread(obj.serialObj.connection,1,'uint8');
+                    output.dropTime = fread(obj.serialObj.connection,1,'uint32');
+                    output.numAttempts = fread(obj.serialObj.connection,1,'int16');
             end
-        end
-        
-        %  Set ADC schedule
-        function obj = setAdcSchedule(obj,varargin)
-            obj.adcSchedule.samplingRate = obj.clockRate2;
-            obj.adcSchedule.numScheduledChannels = min(obj.adcNumChannels,length(obj.adcSchedule.scheduledChannelList));
-            obj.adcSchedule.scheduledChannelList = obj.adcSchedule.scheduledChannelList(1:obj.adcSchedule.numScheduledChannels);
-            obj.adcSchedule.numScheduledFrames = min(obj.adcSchedule.numScheduledFrames,floor(obj.adcMaxBufferSize / obj.adcSchedule.numScheduledChannels));
-            obj.adcSchedule.numRequestedFrames = min(obj.adcSchedule.numRequestedFrames,obj.adcSchedule.numScheduledFrames);
-            obj.adcBufferSize = obj.adcSchedule.numScheduledFrames*obj.adcSchedule.numScheduledChannels;
-            fwrite(obj.serialObj,obj.commandSetAdcSchedule);
-            fwrite(obj.serialObj,uint8(8+obj.adcSchedule.numScheduledChannels));
-            fwrite(obj.serialObj,uint8(obj.adcSchedule.numScheduledChannels));
-            fwrite(obj.serialObj,uint8(obj.adcSchedule.scheduledChannelList-1));
-            fwrite(obj.serialObj,typecast(int16(obj.adcSchedule.numScheduledFrames),'uint8'));
-            fwrite(obj.serialObj,typecast(int16(obj.adcSchedule.onsetDelay),'uint8'));
-            fwrite(obj.serialObj,uint8(obj.adcSchedule.useRingBuffer));
-            fwrite(obj.serialObj,typecast(int16(obj.adcSchedule.numRequestedFrames),'uint8'));
-        end
-        
-        %  Start ADC schedule
-        function obj = startAdcSchedule(obj)
-            fwrite(obj.serialObj,obj.commandStartAdcSchedule);
-        end
-        
-        %  Stop ADC schedule
-        function obj = stopAdcSchedule(obj)
-            fwrite(obj.serialObj,obj.commandStopAdcSchedule);
-        end
-        
-        %  Start Event listener
-        function obj = startEventListener0(obj)
-            fwrite(obj.serialObj,obj.commandStartEventListener0);
-        end
-        
-        %  Stop Event Listener
-        function obj = stopEventlistener0(obj)
-            fwrite(obj.serialObj,obj.commandStopEventListener0);
-        end
-        
-        %  Start Pellet Release
-        function obj = startPelletRelease(obj)
-            fwrite(obj.serialObj,obj.commandStartPelletRelease);
         end
         
         %  Add command to command queue
         function obj = addCommand(obj,varargin)
-            obj.commandQueue{end+1} = varargin{1};
+            if(ismethod(obj,varargin{1}))
+                obj.commandQueue{end+1} = varargin{1};
+            else
+                error('%s is not a valid method of a2duino and cannot be added to command queue',varargin{1});
+            end
         end
         
         %  Run commands in command queue
-        function obj = runCommands(obj)
+        function obj = sendCommands(obj)
             for i=1:length(obj.commandQueue)
                 feval(obj.commandQueue{i},obj,'send');
             end
+            obj.resultBuffer = struct([]);
         end
         
         %  Retreive output from command queue
-        function output = retrieveOutput(obj)
-            output = cell(size(obj.commandQueue));
-            for i=1:length(output)
-                output{i} = feval(obj.commandQueue{i},obj,'receive');
+        function obj = retrieveOutput(obj)
+            for i=1:length(obj.commandQueue)
+                obj.resultBuffer(i).command = obj.commandQueue{i};
+                obj.resultBuffer(i).output = feval(obj.commandQueue{i},obj,'receive');
             end
-            output = cell2struct(output,obj.commandQueue,2);
             obj.commandQueue = cell(0);
+        end
+        
+        %  Recover output from result buffer
+        %  This will return all outputs corresponding to the specified
+        %  command
+        function output = recoverResult(obj,varargin)
+            output = [obj.resultBuffer(strcmp(varargin{1},{obj.resultBuffer.command})).output];
         end
     end
 end
