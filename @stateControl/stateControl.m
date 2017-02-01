@@ -1,7 +1,8 @@
 classdef stateControl < handle
-    %stateControl control common state variables for PLDAPS trials
+    %stateControl control common state variables for PLDAPS trials and keep
+    %track of state transition times
     %
-    %  NB:  depends on psychophysics toolbox
+    %  NB:  depends on psychophysics toolbox function GetSecs
     %
     %  Lee Lovejoy
     %  January 2017
@@ -20,7 +21,7 @@ classdef stateControl < handle
     
     properties (Hidden)
         stateEntryTime
-        transitionLog = struct('state',[],'stateEntryTime',[]);
+        transitionLog = struct('state',[],'stateEntryTime',[],'stateDuration',[]);
         numTransitions = 0;
     end
     
@@ -45,6 +46,7 @@ classdef stateControl < handle
                 obj.numTransitions = obj.numTransitions+1;
                 obj.transitionLog.state{obj.numTransitions} = obj.nextState;
                 obj.transitionLog.stateEntryTime(obj.numTransitions) = obj.stateEntryTime;
+                obj.transitionLog.stateDuration(obj.numTransitions) = obj.stateDuration;
             end
         end
         
