@@ -44,6 +44,7 @@ classdef a2duino < handle
     properties (SetAccess=private)
         commandQueue = cell(0);
         resultBuffer = struct([]);
+        commandLock = false;
     end
     
     properties (Constant,Hidden)
@@ -99,7 +100,7 @@ classdef a2duino < handle
             obj.adcSchedule = a2duino.adcSchedule(varargin{:});
             
             %  Create serial port object
-            obj.serialObj = a2duino.serial(varargin{:});        
+            obj.serialObj = a2duino.serial(varargin{:});
             
             %  Open serial port connection
             fopen(obj.serialObj.connection);
@@ -136,7 +137,7 @@ classdef a2duino < handle
                 fprintf('     number of event detection pins:  %d\n',obj.eventNumPins);
                 fprintf('maximum number of detections stored:  %d\n',obj.eventMaxNumDetections);
             end
-        end        
+        end
         
         %  Class destructor
         function delete(obj)
@@ -208,10 +209,10 @@ classdef a2duino < handle
         function obj = startPelletRelease(obj)
             fwrite(obj.serialObj.connection,obj.commandStartPelletRelease);
         end
-    
+        
         %  Get time since start (msec)
         function output = getTicksSinceStart(obj,varargin)
-            if(nargin==1)
+            if(nargin==1 && ~obj.commandLock)
                 fwrite(obj.serialObj.connection,obj.commandGetTicksSinceStart);
                 controlFlag = 'receive';
             else
@@ -221,13 +222,15 @@ classdef a2duino < handle
                 case 'send'
                     fwrite(obj.serialObj.connection,obj.commandGetTicksSinceStart);
                 case 'receive'
-                    output = fread(obj.serialObj.connection,1,'uint32')*obj.timeStep;
+                    if(~obj.commandLock)
+                        output = fread(obj.serialObj.connection,1,'uint32')*obj.timeStep;
+                    end
             end
         end
         
         %  Get ADC voltages
         function output = getAdcVoltages(obj,varargin)
-            if(nargin==1)
+            if(nargin==1 && ~obj.commandLock)
                 fwrite(obj.serialObj.connection,obj.commandGetAdcVoltages);
                 controlFlag = 'receive';
             else
@@ -237,14 +240,16 @@ classdef a2duino < handle
                 case 'send'
                     fwrite(obj.serialObj.connection,obj.commandGetAdcVoltages);
                 case 'receive'
-                    num = fread(obj.serialObj.connection,1,'int16');
-                    output = fread(obj.serialObj.connection,num,'int16');
+                    if(~obj.commandLock)
+                        num = fread(obj.serialObj.connection,1,'int16');
+                        output = fread(obj.serialObj.connection,num,'int16');
+                    end
             end
         end
         
         %  Get ADC Schedule
-        function output = getAdcSchedule(obj,varargin)            
-            if(nargin==1)
+        function output = getAdcSchedule(obj,varargin)
+            if(nargin==1 && ~obj.commandLock)
                 fwrite(obj.serialObj.connection,obj.commandGetAdcSchedule);
                 controlFlag = 'receive';
             else
@@ -254,18 +259,20 @@ classdef a2duino < handle
                 case 'send'
                     fwrite(obj.serialObj.connection,obj.commandGetAdcSchedule);
                 case 'receive'
-                    output.numScheduledChannels = fread(obj.serialObj.connection,1,'int16');
-                    output.scheduledChannelList = fread(obj.serialObj.connection,output.numScheduledChannels,'int16')+1;
-                    output.numScheduledFrames = fread(obj.serialObj.connection,1,'int16');
-                    output.onsetDelay = fread(obj.serialObj.connection,1,'int16');
-                    output.useRingBuffer = fread(obj.serialObj.connection,1,'uint8');
-                    output.numRequestedFrames = fread(obj.serialObj.connection,1,'int16');
+                    if(~obj.commandLock)
+                        output.numScheduledChannels = fread(obj.serialObj.connection,1,'int16');
+                        output.scheduledChannelList = fread(obj.serialObj.connection,output.numScheduledChannels,'int16')+1;
+                        output.numScheduledFrames = fread(obj.serialObj.connection,1,'int16');
+                        output.onsetDelay = fread(obj.serialObj.connection,1,'int16');
+                        output.useRingBuffer = fread(obj.serialObj.connection,1,'uint8');
+                        output.numRequestedFrames = fread(obj.serialObj.connection,1,'int16');
+                    end
             end
         end
         
         %  Get ADC Buffer
-        function output = getAdcBuffer(obj,varargin)            
-            if(nargin==1)
+        function output = getAdcBuffer(obj,varargin)
+            if(nargin==1 && ~obj.commandLock)
                 fwrite(obj.serialObj.connection,obj.commandGetAdcBuffer);
                 controlFlag = 'receive';
             else
@@ -275,25 +282,27 @@ classdef a2duino < handle
                 case 'send'
                     fwrite(obj.serialObj.connection,obj.commandGetAdcBuffer);
                 case 'receive'
-                    output.bufferData = fread(obj.serialObj.connection,[obj.adcSchedule.numScheduledChannels,obj.adcSchedule.numRequestedFrames],'int16');
-                    output.timeStamp = fread(obj.serialObj.connection,1,'uint32');
-                    output.writeTime = fread(obj.serialObj.connection,1,'uint32');
-                    output.timeStamp = 1000*output.timeStamp/obj.adcSchedule.samplingRate;
-                    output.timeBase = (output.timeStamp+(1-obj.adcSchedule.numRequestedFrames:1:0)*1000/obj.adcSchedule.samplingRate);
-                    if(~isempty(obj.lastSampleTime))
-                        ix = output.timeBase > obj.lastSampleTime;
-                        output.timeBase = output.timeBase(ix);
-                        output.bufferData = output.bufferData(:,ix);
-                        output.underFlow = obj.adcSchedule.numScheduledFrames - sum(ix);
-                        output.overFlow = max(0,output.timeStamp - obj.lastSampleTime - obj.adcSchedule.numScheduledFrames);
+                    if(~obj.commandLock)
+                        output.bufferData = fread(obj.serialObj.connection,[obj.adcSchedule.numScheduledChannels,obj.adcSchedule.numRequestedFrames],'int16');
+                        output.timeStamp = fread(obj.serialObj.connection,1,'uint32');
+                        output.writeTime = fread(obj.serialObj.connection,1,'uint32');
+                        output.timeStamp = 1000*output.timeStamp/obj.adcSchedule.samplingRate;
+                        output.timeBase = (output.timeStamp+(1-obj.adcSchedule.numRequestedFrames:1:0)*1000/obj.adcSchedule.samplingRate);
+                        if(~isempty(obj.lastSampleTime))
+                            ix = output.timeBase > obj.lastSampleTime;
+                            output.timeBase = output.timeBase(ix);
+                            output.bufferData = output.bufferData(:,ix);
+                            output.underFlow = obj.adcSchedule.numScheduledFrames - sum(ix);
+                            output.overFlow = max(0,output.timeStamp - obj.lastSampleTime - obj.adcSchedule.numScheduledFrames);
+                        end
+                        obj.lastSampleTime = output.timeStamp;
                     end
-                    obj.lastSampleTime = output.timeStamp;
             end
         end
         
         %  Get ADC status
-        function output = getAdcStatus(obj,varargin)            
-            if(nargin==1)
+        function output = getAdcStatus(obj,varargin)
+            if(nargin==1 && ~obj.commandLock)
                 fwrite(obj.serialObj.connection,obj.commandGetAdcStatus);
                 controlFlag = 'receive';
             else
@@ -303,14 +312,16 @@ classdef a2duino < handle
                 case 'send'
                     fwrite(obj.serialObj.connection,obj.commandGetAdcStatus);
                 case 'receive'
-                    output = fread(obj.serialObj.connection,1,'uint8');
-                    obj.adcScheduleRunning = ~~output;
+                    if(~obj.commandLock)
+                        output = fread(obj.serialObj.connection,1,'uint8');
+                        obj.adcScheduleRunning = ~~output;
+                    end
             end
         end
         
         %  Get Event Listner
-        function output = getEventListener0(obj,varargin)            
-            if(nargin==1)
+        function output = getEventListener0(obj,varargin)
+            if(nargin==1 && ~obj.commandLock)
                 fwrite(obj.serialObj.connection,obj.commandGetEventListener0);
                 controlFlag = 'receive';
             else
@@ -320,18 +331,20 @@ classdef a2duino < handle
                 case 'send'
                     fwrite(obj.serialObj.connection,obj.commandGetEventListener0);
                 case 'receive'
-                    numEvents = fread(obj.serialObj.connection,1,'int16');
-                    if(numEvents > 0)
-                        output = fread(obj.serialObj.connection,numEvents,'uint32');
-                    else
-                        output = [];
+                    if(~obj.commandLock)
+                        output.numEvents = fread(obj.serialObj.connection,1,'int16');
+                        if(output.numEvents > 0)
+                            output.events = fread(obj.serialObj.connection,output.numEvents,'uint32');
+                        else
+                            output.events = [];
+                        end
                     end
             end
         end
         
         %  Get pellet release status
-        function output = getPelletReleaseStatus(obj,varargin)            
-            if(nargin==1)
+        function output = getPelletReleaseStatus(obj,varargin)
+            if(nargin==1 && ~obj.commandLock)
                 fwrite(obj.serialObj.connection,obj.commandGetPelletReleaseStatus);
                 controlFlag = 'receive';
             else
@@ -341,9 +354,11 @@ classdef a2duino < handle
                 case 'send'
                     fwrite(obj.serialObj.connection,obj.commandGetPelletReleaseStatus);
                 case 'receive'
-                    output.dropMade = fread(obj.serialObj.connection,1,'uint8');
-                    output.dropTime = fread(obj.serialObj.connection,1,'uint32');
-                    output.numAttempts = fread(obj.serialObj.connection,1,'int16');
+                    if(~obj.commandLock)
+                        output.dropMade = fread(obj.serialObj.connection,1,'uint8');
+                        output.dropTime = fread(obj.serialObj.connection,1,'uint32');
+                        output.numAttempts = fread(obj.serialObj.connection,1,'int16');
+                    end
             end
         end
         
@@ -358,14 +373,17 @@ classdef a2duino < handle
         
         %  Run commands in command queue
         function obj = sendCommands(obj)
+            flushinput(obj.serialObj.connection);
             for i=1:length(obj.commandQueue)
                 feval(obj.commandQueue{i},obj,'send');
             end
             obj.resultBuffer = struct([]);
+            obj.commandLock = true;
         end
         
         %  Retreive output from command queue
         function obj = retrieveOutput(obj)
+            obj.commandLock = false;
             for i=1:length(obj.commandQueue)
                 obj.resultBuffer(i).command = obj.commandQueue{i};
                 obj.resultBuffer(i).output = feval(obj.commandQueue{i},obj,'receive');
@@ -375,7 +393,7 @@ classdef a2duino < handle
         
         %  Recover output from result buffer
         %  This will return all outputs corresponding to the specified
-        %  command
+        %  command; if there is none, then output will be empty
         function output = recoverResult(obj,varargin)
             output = [obj.resultBuffer(strcmp(varargin{1},{obj.resultBuffer.command})).output];
         end

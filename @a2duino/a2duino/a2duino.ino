@@ -378,8 +378,6 @@ void writeAdcBuffer() {
     Serial.write((byte*)&adcBuffer[adcBufferSize - adcNumRequestedBytes + adcBufferIndex__], sizeof(adcBuffer[0]) * (adcNumRequestedBytes - adcBufferIndex__));
     Serial.write((byte*)&adcBuffer[0], sizeof(adcBuffer[0])*adcBufferIndex__);
   }
-  //  Serial.write((byte*)&adcBuffer[adcBufferIndex__], sizeof(adcBuffer[0]) * (adcBufferSize - adcBufferIndex__));
-  // Serial.write((byte*)&adcBuffer[0], sizeof(adcBuffer[0])*adcBufferIndex__);
   Serial.write((byte*)&adcLastTick__, sizeof(adcLastTick__));
   t = micros() - t;
   Serial.write((byte*)&t, sizeof(t));

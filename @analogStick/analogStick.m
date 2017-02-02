@@ -27,7 +27,9 @@ classdef analogStick < handle
         horizontalGain = 0.5;
         verticalOffset = 0;
         verticalGain = 0;
-        
+    end
+    
+    properties (SetAccess = protected)
         normalizedPosition
         screenPosition
     end
