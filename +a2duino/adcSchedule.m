@@ -14,6 +14,7 @@ classdef adcSchedule
     methods
         %  Class constructor
         function obj = adcSchedule(varargin)
+            
             %  Set properties based on name value pairs
             for i=1:2:nargin
                 if(isprop(obj,varargin{i}))

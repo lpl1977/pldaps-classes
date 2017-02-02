@@ -96,10 +96,10 @@ classdef a2duino < handle
         function obj = a2duino(verbose,varargin)
             
             %  Create ADC schedule
-            obj.adcSchedule = a2duino.adcSchedule(varargin);
+            obj.adcSchedule = a2duino.adcSchedule(varargin{:});
             
             %  Create serial port object
-            obj.serialObj = a2duino.serial(varargin);        
+            obj.serialObj = a2duino.serial(varargin{:});        
             
             %  Open serial port connection
             fopen(obj.serialObj.connection);
@@ -211,7 +211,12 @@ classdef a2duino < handle
     
         %  Get time since start (msec)
         function output = getTicksSinceStart(obj,varargin)
-            controlFlag = varargin{1};
+            if(nargin==1)
+                fwrite(obj.serialObj.connection,obj.commandGetTicksSinceStart);
+                controlFlag = 'receive';
+            else
+                controlFlag = varargin{1};
+            end
             switch controlFlag
                 case 'send'
                     fwrite(obj.serialObj.connection,obj.commandGetTicksSinceStart);
