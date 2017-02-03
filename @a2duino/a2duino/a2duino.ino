@@ -51,7 +51,6 @@ const int __adcMaxBufferSize = 500;
 const int __rewardNumOutputPins = 1;
 const int __rewardOutputPin0 = 12;
 const int __rewardOutputPin0InitialState = LOW;
-const int __pelletMaxAttempts = 11;
 
 // Event listeners
 const int __eventListenersNumInputPins = 1;
@@ -60,6 +59,7 @@ const int __eventListenersMaxEvents = 30;
 
 // Command codes
 const int __maxInstructionLength = 100;
+
 const int __writeTicsSinceStart = 1;
 const int __writeAdcVoltages = 3;
 const int __writeAdcSchedule = 7;
@@ -71,7 +71,7 @@ const int __startAdcSchedule = 21;
 const int __stopAdcSchedule = 23;
 const int __startEventListener0 = 25;
 const int __stopEventListener0 = 27;
-const int __startPelletRelease = 41;
+const int __startPelletRelease = 42;
 const int __readAdcSchedule = 50;
 
 /*
@@ -101,10 +101,10 @@ int adcScheduledChannelList[__adcNumChannels];
 // Pellet delivery--on rewardOutputPin0, controlled via externalInterruptRequest0
 volatile boolean pelletReleaseInProgress = false;
 volatile boolean pelletDropDetected = false;
-volatile boolean pelletReleaseFailed = false;
 unsigned long pelletStartReleaseTicks;
 volatile unsigned long pelletCompleteReleaseTicks;
 volatile int pelletNumAttempts;
+int pelletMaxAttempts = 11;
 
 // Event Listener
 boolean eventListener0Listening = false;
@@ -397,9 +397,8 @@ void writeEventListener0() {
    writePelletReleaseStatus
 */
 void writePelletReleaseStatus() {
+  Serial.write(pelletReleaseInProgress);
   Serial.write(pelletDropDetected);
-  if (pelletDropDetected) pelletCompleteReleaseTicks -= pelletStartReleaseTicks;
-  else pelletCompleteReleaseTicks = 0;
   Serial.write((byte*)&pelletCompleteReleaseTicks, sizeof(pelletCompleteReleaseTicks));
   Serial.write((byte*)&pelletNumAttempts, sizeof(pelletNumAttempts));
 }
@@ -443,10 +442,11 @@ void stopEventListener0() {
    startPelletRelease
 */
 void startPelletRelease() {
+  pelletMaxAttempts = instruction[0];
   pelletReleaseInProgress = true;
   pelletDropDetected = false;
-  pelletReleaseFailed = false;
   pelletStartReleaseTicks = ticksSinceStart;
+  pelletCompleteReleaseTicks = 0;
   pelletNumAttempts = 0;
   TCNT1  = __compareMatchRegisterTimer1 - 1;  // This resets the timer so that we count from first attempt
 }
@@ -473,7 +473,7 @@ void readAdcSchedule() {
 */
 ISR(INT0_vect) {
   pelletDropDetected = true;
-  pelletCompleteReleaseTicks = ticksSinceStart;
+  pelletCompleteReleaseTicks = ticksSinceStart - pelletStartReleaseTicks;
   pelletReleaseInProgress = false;
 }
 
@@ -489,13 +489,12 @@ ISR(INT1_vect) {
     Interrupt service routine triggered at TIMER1_COMPA_vect
 */
 ISR(TIMER1_COMPA_vect) {
-  if (pelletReleaseInProgress && !pelletDropDetected && pelletNumAttempts < __pelletMaxAttempts) {
+  if (pelletReleaseInProgress && !pelletDropDetected && pelletNumAttempts < pelletMaxAttempts) {
     digitalWrite(__rewardOutputPin0, HIGH);
     digitalWrite(__rewardOutputPin0, LOW);
     pelletNumAttempts++;
-  } else if (!pelletDropDetected) {
-    pelletReleaseFailed = true;
-  }
+  } else if (pelletReleaseInProgress)
+    pelletReleaseInProgress = false;
 }
 
 /*
