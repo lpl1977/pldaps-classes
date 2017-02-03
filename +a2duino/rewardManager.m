@@ -7,10 +7,10 @@ classdef rewardManager < handle
     
     properties
         maxReleaseAttempts = 11;
-        rewardType
     end
     
     properties (SetAccess = protected)
+        rewardType
         releaseInProgress
         releaseFailed
     end
