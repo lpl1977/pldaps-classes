@@ -64,7 +64,7 @@ classdef a2duino < handle
         commandStopAdcSchedule = uint8(23);
         commandStartEventListener0 = uint8(25);
         commandStopEventListener0 = uint8(27);
-        commandStartPelletRelease = uint8(41);
+        commandStartPelletRelease = uint8(42);
         commandSetAdcSchedule = uint8(50);
         
         %  Constants related to Arduino communication
@@ -206,8 +206,11 @@ classdef a2duino < handle
         end
         
         %  Start Pellet Release
-        function obj = startPelletRelease(obj)
+        function obj = startPelletRelease(obj,varargin)
+            maxReleaseAttempts = varargin{1};
             fwrite(obj.serialObj.connection,obj.commandStartPelletRelease);
+            fwrite(obj.serialObj.connection,uint8(1));
+            fwrite(obj.serialObj.connection,uint8(maxReleaseAttempts));
         end
         
         %  Get time since start (msec)
@@ -355,8 +358,9 @@ classdef a2duino < handle
                     fwrite(obj.serialObj.connection,obj.commandGetPelletReleaseStatus);
                 case 'receive'
                     if(~obj.commandLock)
-                        output.dropMade = fread(obj.serialObj.connection,1,'uint8');
-                        output.dropTime = fread(obj.serialObj.connection,1,'uint32');
+                        output.releaseInProgress = fread(obj.serialObj.connection,1,'uint8');
+                        output.releaseDetected = fread(obj.serialObj.connection,1,'uint8');
+                        output.releaseTime = fread(obj.serialObj.connection,1,'uint32');
                         output.numAttempts = fread(obj.serialObj.connection,1,'int16');
                     end
             end
@@ -396,6 +400,16 @@ classdef a2duino < handle
         %  command; if there is none, then output will be empty
         function output = recoverResult(obj,varargin)
             output = [obj.resultBuffer(strcmp(varargin{1},{obj.resultBuffer.command})).output];
+        end
+        
+        %  Check if a command is in the queue
+        function outcome = checkCommandQueue(obj,varargin)
+            outcome = ~isempty(obj.commandQueue) && any(strcmp(varargin{1},obj.commandQueue));
+        end
+        
+        %  Check if a result is in the buffer
+        function outcome = checkResultBuffer(obj,varargin)
+            outcome = ~isempty(obj.resultBuffer) && any(strcmp(varargin{1},{obj.resultBuffer.command}));
         end
     end
 end

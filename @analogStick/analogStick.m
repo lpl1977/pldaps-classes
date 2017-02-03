@@ -19,6 +19,7 @@ classdef analogStick < handle
     
     properties
         dataSource = 'datapixx.adc';
+        channels = 'channels';
         horizontalChannel = 0;
         verticalChannel = 1;
         movingAverage = 8;
@@ -27,6 +28,10 @@ classdef analogStick < handle
         horizontalGain = 0.5;
         verticalOffset = 2.5;
         verticalGain = 0.5;
+        
+        pCenter
+        pWidth
+        pHeight
     end
     
     properties (SetAccess = protected)
@@ -39,10 +44,6 @@ classdef analogStick < handle
         verticalChannelID
         dataSampleCountChannelSubs
         dataChannelSubs
-        
-        pCenter = [959.5 539.5];
-        pWidth = 1920;
-        pHeight = 1080;
         
         rawX = NaN;
         rawY = NaN;
@@ -57,7 +58,12 @@ classdef analogStick < handle
         %  First argument is the pldaps object.  Remainder are name value
         %  pairs for setting properties
         function obj = analogStick(p,varargin)
-
+            
+            %  set contingent properties
+            obj.pCenter = p.trial.display.ctr(1:2);
+            obj.pWidth = p.trial.display.pWidth;
+            obj.pHeight = p.trial.display.pHeight;
+            
             %  If user is supplying fields, set properties
             for i=1:2:nargin-1
                 if(isprop(obj,varargin{i}))
@@ -68,7 +74,7 @@ classdef analogStick < handle
             end
             
             %  Load calibration file if there is a calibration file to be
-            %  found for the specified subject
+            %  found for th.datae specified subject
             filename = sprintf('~/Documents/MATLAB/settings/analogStickCalibration_%s.mat',lower(p.trial.session.subject));
             if(exist(filename,'file'))
                 calibration = load(filename);
@@ -88,7 +94,7 @@ classdef analogStick < handle
                 S(i+1).type = '.';
                 S(i+1).subs = fields{i};
             end
-            S(end).subs = 'channels';
+            S(end).subs = obj.channels;
             if(~isempty(obj.horizontalChannel))
                 obj.horizontalChannelID = find(subsref(p,S) == obj.horizontalChannel);
             end
