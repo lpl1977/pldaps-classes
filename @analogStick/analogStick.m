@@ -25,8 +25,8 @@ classdef analogStick < handle
         
         horizontalOffset = 2.5;
         horizontalGain = 0.5;
-        verticalOffset = 0;
-        verticalGain = 0;
+        verticalOffset = 2.5;
+        verticalGain = 0.5;
     end
     
     properties (SetAccess = protected)
@@ -110,15 +110,13 @@ classdef analogStick < handle
         %  NB:  for now, written so each DAQ has its own case.  May be
         %  revised later
         function outcome = checkConnection(obj)
-            switch lower(obj.dataSource)
-                case 'datapixx.adc'
-                    V = Datapixx('GetAdcVoltages');
-                    hC = obj.horizontalChannel;
-                    vC = obj.verticalChannel;
-                    outcome = (isempty(hC) || abs(V(hC+1))<6) && (isempty(vC) || abs(V(vC+1))<6);
-                    
-                case 'a2duino.adc'
-                    outcome = true;
+            if(strfind(lower(obj.dataSource),'datapixx'))
+                V = Datapixx('GetAdcVoltages');
+                hC = obj.horizontalChannel;
+                vC = obj.verticalChannel;
+                outcome = (isempty(hC) || abs(V(hC+1))<6) && (isempty(vC) || abs(V(vC+1))<6);
+            elseif(strfind(lower(obj.dataSource),'a2duino'))
+                outcome = true;
             end
         end
         
