@@ -11,8 +11,8 @@ classdef rewardManager < handle
     
     properties (SetAccess = protected)
         rewardType
-        releaseInProgress
-        releaseFailed
+        releaseInProgress = false;
+        releaseFailed = false;
     end
     
     properties (Hidden, SetAccess = private)
@@ -32,27 +32,21 @@ classdef rewardManager < handle
             switch lower(obj.rewardType)
                 case 'pellet'
                     obj.a2duinoObj.startPelletRelease(obj.maxReleaseAttempts);
-                    obj.releaseInProgress = true;
-                    obj.a2duinoObj.addCommand('getPelletReleaseStatus');
+                    obj.releaseInProgress = true;                    
             end
         end
         
         function output = checkRewardStatus(obj)
             if(obj.releaseInProgress)
-                if(obj.a2duinoObj.checkResultBuffer('getPelletReleaseStatus'))
-                    output = obj.a2duinoObj.recoverResult('getPelletReleaseStatus');
-                    if(~output.releaseInProgress && ~output.releaseDetected)
-                        obj.releaseFailed = true;
-                        obj.releaseInProgress = false;
-                    elseif(output.releaseDetected)
-                        obj.releaseFailed = false;
-                        obj.releaseInProgress = false;
-                    end
-                elseif(~obj.a2duinoObj.checkCommandQueue('getPelletReleaseStatus'))
-                    obj.a2duinoObj.addCommand('getPelletReleaseStatus');
+                output = obj.a2duinoObj.recoverResult('getPelletReleaseStatus');
+                if(~output.releaseInProgress && ~output.releaseDetected)
+                    obj.releaseFailed = true;
+                    obj.releaseInProgress = false;
+                elseif(output.releaseDetected)
+                    obj.releaseFailed = false;
+                    obj.releaseInProgress = false;
                 end
             end
-            
         end
     end
 end

@@ -381,13 +381,13 @@ classdef a2duino < handle
             for i=1:length(obj.commandQueue)
                 feval(obj.commandQueue{i},obj,'send');
             end
-            obj.resultBuffer = struct([]);
             obj.commandLock = true;
         end
         
         %  Retreive output from command queue
         function obj = retrieveOutput(obj)
             obj.commandLock = false;
+            obj.resultBuffer = struct([]);
             for i=1:length(obj.commandQueue)
                 obj.resultBuffer(i).command = obj.commandQueue{i};
                 obj.resultBuffer(i).output = feval(obj.commandQueue{i},obj,'receive');
@@ -400,16 +400,6 @@ classdef a2duino < handle
         %  command; if there is none, then output will be empty
         function output = recoverResult(obj,varargin)
             output = [obj.resultBuffer(strcmp(varargin{1},{obj.resultBuffer.command})).output];
-        end
-        
-        %  Check if a command is in the queue
-        function outcome = checkCommandQueue(obj,varargin)
-            outcome = ~isempty(obj.commandQueue) && any(strcmp(varargin{1},obj.commandQueue));
-        end
-        
-        %  Check if a result is in the buffer
-        function outcome = checkResultBuffer(obj,varargin)
-            outcome = ~isempty(obj.resultBuffer) && any(strcmp(varargin{1},{obj.resultBuffer.command}));
         end
     end
 end
