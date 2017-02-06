@@ -7,11 +7,17 @@ classdef windowManager < handle
     %  To add or change a window
     %  obj.addWindow([window tag],[rect])
     %
-    %  To remove a specific window
-    %  obj.removeWindow([tag])
+    %  To disable a specific window
+    %  obj.disableWindow([tag])
     %
-    %  To remove all windows
-    %  obj.removeWindow('all')
+    %  To disable all windows
+    %  obj.disableWindow('all')
+    %
+    %  To enable a specific window
+    %  obj.enableWindow([tag])
+    %
+    %  To enable all windows
+    %  obj.enableWindow('all')
     %
     %  To update windows with the current position
     %  obj.updateWindows([pos])
@@ -30,30 +36,16 @@ classdef windowManager < handle
     
     properties (SetAccess = private)
         currentWindow
-        windows
     end
     
     properties (Hidden, SetAccess = private)
-        windowList
+        windowList = cell(0);
+        windowEnabled = false(0);
+        windowRect = cell(0);
     end
     
     methods
-        
-        %  Class constructor
-        %
-        %  Create window manager object.
-        function obj = windowManager(varargin)
-            
-            %  If user is supplying fields, set properties
-            for i=1:2:nargin
-                if(isprop(obj,varargin{i}))
-                    obj.(varargin{i}) = varargin{i+1};
-                else
-                    error('%s is not a valid property of %s',varargin{i},mfilename);
-                end
-            end
-        end
-        
+
         %  addWindow
         %
         %  Function to add a window to the list of windows or change an
@@ -67,45 +59,65 @@ classdef windowManager < handle
                 
                 %  Window not defined, add it to the end of the list
                 obj.windowList{end+1} = name;
+                obj.windowEnabled(end+1) = true;
+                obj.windowRect{end+1} = rect;
+            else
+                obj.windowRect{ix} = rect;
             end
-            obj.windows.(name).name = name;
-            obj.windows.(name).rect = rect;
         end
         
-        %  removeWindow
+        %  enableWindow
         %
-        %  Function to remove some or all windows from the list of windows
-        function obj = removeWindow(obj,varargin)
-            
-            %  Check arguments
+        %  Function to enable a disabled window
+        function obj = enableWindow(obj,varargin)
             if(strcmpi(varargin{1},'all'))
-                obj.windows = [];
-                obj.windowList = [];
+                obj.windowEnabled = true(size(obj.windowEnabled));
             else
                 name = varargin{1};
-                ix = strcmpi(name,obj.windowList);
-                if(any(ix))
-                    obj.windows = rmfield(obj.windows,obj.windowList{ix});
-                    obj.windowList = obj.windowList(~ix);
+                if(~any(strcmpi(name,obj.windowList)))
+                    warning('window %s is not defined\n',name);
+                else
+                    ix = strcmpi(name,obj.windowList);
+                    if(any(ix))
+                        obj.windowEnabled(ix) = true;
+                    end
                 end
             end
         end
-           
+        
+        %  disableWindow
+        %
+        %  Function to disable some or all windows from the list of windows
+        function obj = disableWindow(obj,varargin)
+            if(strcmpi(varargin{1},'all'))
+                obj.windowEnabled = false(size(obj.windowEnabled));
+            else
+                name = varargin{1};
+                if(~any(strcmpi(name,obj.windowList)))
+                    warning('window %s is not defined\n',name);
+                else
+                    ix = strcmpi(name,obj.windowList);
+                    if(any(ix))
+                        obj.windowEnabled(ix) = false;
+                    end
+                end
+            end
+        end
+        
         %  updateWindows
         %
-        %  Function to check which of any windows the position is currently
-        %  in
-        function obj = updateWindows(obj,varargin)
-            
+        %  Function to check which of any enabled windows the position is
+        %  currently in
+        function obj = updateWindows(obj,varargin)            
             if(nargin==2)
                 pos = varargin{1};
-                ix = false(length(obj.windowList),1);
+                ix = false(size(obj.windowEnabled));
                 for i=1:length(obj.windowList)
-                    rect = obj.windows.(obj.windowList{i}).rect;
+                    rect = obj.windowRect{i};
                     ix(i) = pos(1) >= rect(1) && pos(1) <= rect(3) && pos(2) >= rect(2) && pos(2) <= rect(4);
                 end
-                if(any(ix))
-                    obj.currentWindow = obj.windowList(ix);
+                if(any(ix & obj.windowEnabled))
+                    obj.currentWindow = obj.windowList(ix & obj.windowEnabled);
                 else
                     obj.currentWindow = [];
                 end
@@ -116,15 +128,19 @@ classdef windowManager < handle
         %
         %  Check if the cursor is in the specified window; if the argument
         %  is empty, return whether or not the cursor is in any window
-        function outcome = inWindow(obj,varargin)
-            
-            if(nargin==2)
+        function outcome = inWindow(obj,varargin)            
+            if(nargin>1)
                 name = varargin{1};
             else
                 name = [];
             end            
             if(~isempty(name))
-                outcome = any(strcmpi(name,obj.currentWindow));
+                if(~any(strcmpi(name,obj.windowList)))
+                    outcome = false;
+                    warning('window %s is not defined\n',name);
+                else
+                    outcome = any(strcmpi(name,obj.currentWindow));
+                end
             else
                 outcome = ~isempty(obj.currentWindow);
             end
