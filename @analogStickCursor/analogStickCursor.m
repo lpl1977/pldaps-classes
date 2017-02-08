@@ -9,9 +9,11 @@ classdef analogStickCursor
     
     properties (Hidden)
         defaultFeatures = struct(...
-            'linewidth',8,...
-            'height',30,...
-            'color',[0 0 0]);
+            'armWidth',10,...
+            'height',40,...
+            'fillColor',[0 0 0],...
+            'borderColor',[0 0 0],...
+            'borderWidth',6);
     end
         
     methods
@@ -48,9 +50,17 @@ classdef analogStickCursor
                     features.(varargin{i}) = varargin{i+1};
                 end
             end
-            w = features.linewidth;
+            
+            w = features.armWidth+features.borderWidth;
+            h = features.height+features.borderWidth;
+            color = features.borderColor;
+            baseRect = [-w/2 -h/2 ; h/2 w/2 ; w/2 h/2 ; -h/2 -w/2];            
+            centeredRect = CenterRectOnPoint(baseRect,screenPos(1),screenPos(2));            
+            Screen('FillRect',obj.windowPointer,color,centeredRect);            
+            
+            w = features.armWidth;
             h = features.height;
-            color = features.color;                               
+            color = features.fillColor;                               
             baseRect = [-w/2 -h/2 ; h/2 w/2 ; w/2 h/2 ; -h/2 -w/2];            
             centeredRect = CenterRectOnPoint(baseRect,screenPos(1),screenPos(2));            
             Screen('FillRect',obj.windowPointer,color,centeredRect);

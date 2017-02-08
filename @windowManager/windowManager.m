@@ -29,6 +29,9 @@ classdef windowManager < handle
     %  To check if position is in any window
     %  obj.inWindow
     %
+    %  To display windows to screen
+    %  obj.displayWindows
+    %
     %  Lee Lovejoy
     %  January 2017
     %  ll2833@columbia.edu
@@ -146,5 +149,22 @@ classdef windowManager < handle
             end
         end
         
+        %  displayWindows
+        %
+        %  write window information to stdout
+        function displayWindows(obj)
+            fieldWidth = 0;
+            for i=1:length(obj.windowList)
+                fieldWidth = max(fieldWidth,length(obj.windowList{i}));
+            end
+            for i=1:length(obj.windowList)
+                fprintf('\t%*s:  [%6.3f %6.3f %6.3f %6.3f] ',fieldWidth,obj.windowList{i},obj.windowRect{i});
+                if(obj.windowEnabled(i))
+                    fprintf('(enabled)\n');
+                else
+                    fprintf('(disabled)\n');
+                end
+            end
+        end
     end
 end
