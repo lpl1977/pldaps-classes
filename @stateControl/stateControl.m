@@ -17,6 +17,7 @@ classdef stateControl < handle
     properties (Dependent = true)
         timeInState
         timeInStateElapsed
+        timeRemainingInState
     end
     
     properties (Hidden)
@@ -62,6 +63,11 @@ classdef stateControl < handle
         %  Check if time in state has elapsed
         function outcome = get.timeInStateElapsed(obj)
             outcome = obj.timeInState >= obj.stateDuration;
+        end
+        
+        %  Find out how much time remains
+        function outcome = get.timeRemainingInState(obj)
+            outcome = obj.stateDuration - obj.timeInState;
         end
     end
 end
