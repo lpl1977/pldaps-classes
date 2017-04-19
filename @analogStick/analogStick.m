@@ -74,7 +74,7 @@ classdef analogStick < handle
             end
             
             %  Load calibration file if there is a calibration file to be
-            %  found for th.datae specified subject
+            %  found for the specified subject
             filename = sprintf('~/Documents/MATLAB/settings/analogStickCalibration_%s.mat',lower(p.trial.session.subject));
             if(exist(filename,'file'))
                 calibration = load(filename);
