@@ -99,12 +99,13 @@ classdef a2duino < handle
 
         releaseInProgress = false;
         releaseDetected = false;
+        releaseFailed = false;
     end
     
     properties (Dependent)
         samplingRate
         timeStep
-        releaseFailed
+        connectionOpen
     end
     
     methods
@@ -138,10 +139,10 @@ classdef a2duino < handle
             output = 1000/obj.samplingRate;
         end
         
-        function output = get.releaseFailed(obj)
-            output = ~obj.releaseInProgress && ~obj.releaseDetected;
+        function output = get.connectionOpen(obj)
+            output = strcmpi(obj.serialObj.Status,'open');
         end
-        
+                
         function showConnectionSettings(obj)
             fprintf('     serial port:  %s\n',obj.portName);
             fprintf('connection speed:  %d Bd\n',obj.baud);
@@ -181,22 +182,13 @@ classdef a2duino < handle
             fprintf('               ADC buffer:  %d bytes\n',obj.adcBufferSize);
         end
         
-        
-        % function showAdcSchedule(obj)
-        % end
-        
         %  Class destructor
         function delete(obj)
             fclose(obj.serialObj);
         end
         
-        %  Check connection
-        function output = connectionOpen(obj)
-            output = strcmpi(obj.serialObj.Status,'open');
-        end
-        
         %  Set ADC schedule
-        function obj = setAdcSchedule(obj,varargin)
+        function setAdcSchedule(obj,varargin)
             
             %  Stop ADC schedule before changing
             if(obj.adcScheduleRunning)
@@ -229,42 +221,43 @@ classdef a2duino < handle
         end
         
         %  Start ADC schedule
-        function obj = startAdcSchedule(obj)
+        function startAdcSchedule(obj)
             obj.adcScheduleRunning = true;
             fwrite(obj.serialObj,obj.commandStartAdcSchedule);
         end
         
         %  Stop ADC schedule
-        function obj = stopAdcSchedule(obj)
+        function stopAdcSchedule(obj)
             obj.adcScheduleRunning = false;
             fwrite(obj.serialObj,obj.commandStopAdcSchedule);
         end
         
         %  Start Event listener
-        function obj = startEventListener(obj)
+        function startEventListener(obj)
             obj.eventListenerListening = true;
             fwrite(obj.serialObj,obj.commandStartEventListener);
         end
         
         %  Stop Event Listener
-        function obj = stopEventListener(obj)
+        function stopEventListener(obj)
             obj.eventListenerListening = false;
             fwrite(obj.serialObj,obj.commandStopEventListener);
         end
         
         %  Start Pellet Release
-        function obj = startPelletRelease(obj)
+        function startPelletRelease(obj)
             if(~obj.releaseInProgress)
                 fwrite(obj.serialObj,obj.commandStartPelletRelease);
                 obj.releaseInProgress = true;
                 obj.releaseDetected = false;
+                obj.releaseFailed = false;
             end
         end
         
         %  Start fluid reward, rewardDuration is in sec
         %
         %  Convert reward duration to set compare match register
-        function obj = startFluidReward(obj,rewardDuration)
+        function startFluidReward(obj,rewardDuration)
             rewardDuration = 16e6 * (rewardDuration / obj.prescalar1) - 1;
             fwrite(obj.serialObj,obj.commandStartFluidReward);
             fwrite(obj.serialObj,uint8(2));
@@ -373,8 +366,8 @@ classdef a2duino < handle
                     fwrite(obj.serialObj,obj.commandGetAdcStatus);
                 case 'receive'
                     if(~obj.commandLock)
-                        output = fread(obj.serialObj,1,'uint8');
-                        obj.adcScheduleRunning = ~~output;
+                        output = logical(fread(obj.serialObj,1,'uint8'));
+                        obj.adcScheduleRunning = output;
                     end
             end
         end
@@ -415,10 +408,16 @@ classdef a2duino < handle
                     fwrite(obj.serialObj,obj.commandGetPelletReleaseStatus);
                 case 'receive'
                     if(~obj.commandLock)
-                        obj.releaseInProgress = logical(fread(obj.serialObj,1,'uint8'));
                         obj.releaseDetected = logical(fread(obj.serialObj,1,'uint8'));
                         output.releaseTime = fread(obj.serialObj,1,'uint32');
-                        output.numAttempts = fread(obj.serialObj,1,'int16');
+                        output.numAttempts = fread(obj.serialObj,1,'int16');                        
+                        if(obj.releaseDetected)
+                            obj.releaseInProgress = false;
+                            obj.releaseFailed = false;
+                        elseif(output.numAttempts == obj.maxReleaseAttempts)
+                            obj.releaseInProgress = false;
+                            obj.releaseFailed = true;
+                        end
                     end
             end
         end
@@ -460,7 +459,7 @@ classdef a2duino < handle
         end
         
         %  Add command to command queue
-        function obj = addCommand(obj,varargin)
+        function addCommand(obj,varargin)
             if(ismethod(obj,varargin{1}))
                 obj.commandQueue{end+1} = varargin{1};
             else
@@ -469,7 +468,7 @@ classdef a2duino < handle
         end
         
         %  Run commands in command queue
-        function obj = sendCommands(obj)
+        function sendCommands(obj)
             flushinput(obj.serialObj);
             for i=1:length(obj.commandQueue)
                 feval(obj.commandQueue{i},obj,'send');
@@ -478,7 +477,7 @@ classdef a2duino < handle
         end
         
         %  Retreive output from command queue
-        function obj = retrieveOutput(obj)
+        function retrieveOutput(obj)
             obj.commandLock = false;
             obj.resultBuffer = struct([]);
             for i=1:length(obj.commandQueue)

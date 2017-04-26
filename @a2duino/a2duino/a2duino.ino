@@ -17,7 +17,7 @@
    ll2833@columbia.edu
    January 2017
 
-   March 2017--revisions for clarity and use of Timer0 and Timer 1 (consistent across MCU's) with fluid reward
+   March 2017--revisions for use with ATmega32u4 as well as ATmega328p based MCU, mainly using Timer0 and Timer1 which are the same on these two MCU's
 */
 
 /*
@@ -108,15 +108,10 @@ int adcNumRequestedBytes;
 int adcScheduledChannelList[__adcNumChannels];
 
 // Pellet delivery--on rewardOutputPin, controlled via externalInterruptRequest0
-volatile boolean pelletReleaseInProgress = false;
 volatile boolean pelletReleaseDetected = false;
-unsigned long pelletStartReleaseTicks;
+volatile unsigned long pelletStartReleaseTicks;
 volatile unsigned long pelletCompleteReleaseTicks;
 volatile int pelletNumAttempts;
-
-// Fluid delivery--on rewardOutputPin
-volatile boolean fluidRewardInProgress = false;
-unsigned int fluidRewardDuration;
 
 // Event Listener
 boolean eventListenerListening = false;
@@ -138,11 +133,8 @@ int bytes2int(byte *a) {
 
 void setup() {
 
-  // Prior to initializing timers, disable all interrupts.
-  noInterrupts();
-
-  // Initialize Timer2560
-
+  // Initialize and enable Timer0 (clock for ADC)
+  TIMSK0 &= (0 << OCIE0A);                  // Clear OCIE0A to DISABLE compare A match interrupt on TIMER0_COMPA_vect
   TCCR0A = 0;                               // Clear TCCR0A register (normal operation)
   TCCR0B = 0;                               // Clear TCCR0B register (normal operation)
   TCNT0 = 0;                                // Initialize counter value to 0
@@ -165,10 +157,11 @@ void setup() {
       TCCR0B |= (1 << CS02) | (1 << CS00);  // Set TCCR0B bits CS02 and CS00 for 1024 prescaling
       break;
   }
-  TIMSK0 |= (1 << OCIE0A);                  // Set OCIE0A to enable compare A match interrupt on TIMER0_COMPA_vect
+  TIMSK0 |= (1 << OCIE0A);                  // Set OCIE0A to ENABLE compare A match interrupt on TIMER0_COMPA_vect
 
-  // Initialize Timer1
-
+  // Initialize Timer1 but do not enable (for reward system)
+  TIMSK1 &= (0 << OCIE1A);                  // Set OCIE1A to DISABLE compare A match interrupt on TIMER1_COMPA_vect
+  TIMSK1 &= (0 << OCIE1B);                  // Set OCIE1B to DISABLE compare B match interrupt on TIMER1_COMBB_vect
   TCCR1A = 0;                               // Clear TCCR1A register (normal operation)
   TCCR1B = 0;                               // Clear TCCR1B register (normal operation)
   TCNT1  = 0;                               // Initialize counter value to 0
@@ -191,12 +184,6 @@ void setup() {
       TCCR1B |= (1 << CS12) | (1 << CS10);  // Set TCCR1B bits CS12 and CS10 for 1024 prescaling
       break;
   }
-  // To enable compare A match interrupt on TIMER1_COMPA_vect, set OCIE1A.
-  // TIMSK1 |= (1 << OCIE1A);
-  // Toggle OCIE1A to enable and disable this interrupt.
-
-  // Once timers have been initialized, enable interrupts
-  interrupts();
 
   // Set pin modes for external interrupts
   pinMode(__externalInterruptRequest0, __externalInterruptRequest0PinMode);
@@ -216,18 +203,7 @@ void setup() {
   Serial.begin(230400);
 
   // Write to serial the board specific constants for MATLAB object
-
   writeDeviceSettings();
-
-  //  int mcuType = SIGNATURE_2;
-  //  Serial.write((byte*)&mcuType, sizeof(mcuType));
-  //  Serial.write((byte*)&__compareMatchRegisterTimer0, sizeof(__compareMatchRegisterTimer0));
-  //  Serial.write((byte*)&__prescalarTimer0, sizeof(__prescalarTimer0));
-  //  Serial.write((byte*)&__compareMatchRegisterTimer1, sizeof(__compareMatchRegisterTimer1));
-  //  Serial.write((byte*)&__prescalarTimer1, sizeof(__prescalarTimer1));
-  //  Serial.write((byte*)&__adcMaxBufferSize, sizeof(__adcMaxBufferSize));
-  //  Serial.write((byte*)&__adcNumChannels, sizeof(__adcNumChannels));
-  //  Serial.write((byte*)&__eventListenerMaxEvents, sizeof(__eventListenerMaxEvents));
 
   // Wait for outgoing serial data to complete
   Serial.flush();
@@ -414,7 +390,6 @@ void writeeventListener() {
    writePelletReleaseStatus
 */
 void writePelletReleaseStatus() {
-  Serial.write(pelletReleaseInProgress);
   Serial.write(pelletReleaseDetected);
   Serial.write((byte*)&pelletCompleteReleaseTicks, sizeof(pelletCompleteReleaseTicks));
   Serial.write((byte*)&pelletNumAttempts, sizeof(pelletNumAttempts));
@@ -477,28 +452,22 @@ void stopeventListener() {
    startFluidReward
 */
 void startFluidReward() {
-  fluidRewardInProgress = true;
-  fluidRewardDuration = bytes2int(&instruction[0]);
-  digitalWrite(__rewardOutputPin, HIGH);
-  TCNT1  = 0;                                       // Initialize counter value to 0
-  OCR1A  = fluidRewardDuration;                     // Set compare match register
-  TIMSK1 |= (1 << OCIE1A);                          // Set OCIE1A to enable compare A match interrupt on TIMER1_COMPA_vect
+  TCNT1 = 0;                                // Reset counter
+  OCR1B = bytes2int(&instruction[0]);       // Set compare match register B to fluid reward duration
+  OCR1A = OCR1B;                            // Make sure OCR1A == OCR1B
+  TIMSK1 |= (1 << OCIE1B);                  // Enable interrupt TIMER1_COMPB_vect
 }
 
 /*
    startPelletRelease
 */
 void startPelletRelease() {
-  pelletReleaseInProgress = true;
   pelletReleaseDetected = false;
-  pelletStartReleaseTicks = ticksSinceStart;
   pelletCompleteReleaseTicks = 0;
-  pelletNumAttempts = 1;
-  digitalWrite(__rewardOutputPin, HIGH);
-  digitalWrite(__rewardOutputPin, LOW);
-  TCNT1  = 0;                                 // This resets the timer so that we count from first attempt
-  OCR1A  = __compareMatchRegisterTimer1;      // Make sure nothing has happened to the compare match register
-  TIMSK1 |= (1 << OCIE1A);                    // Set OCIE1A to enable compare A match interrupt on TIMER1_COMPA_vect
+  pelletNumAttempts = 0;
+  OCR1A  = __compareMatchRegisterTimer1;    // Set compare match register A
+  TCNT1  = 0;                               // Reset counter
+  TIMSK1 |= (1 << OCIE1A);                  // Enable interrupt TIMER1_COMPA_vect
 }
 
 /*
@@ -524,10 +493,9 @@ void readAdcSchedule() {
   Detect pellet release
 */
 ISR(INT0_vect) {
-  pelletReleaseInProgress = false;
   pelletReleaseDetected = true;
   pelletCompleteReleaseTicks = ticksSinceStart - pelletStartReleaseTicks;
-  TIMSK1 |= (0 << OCIE1A);  // Clear OCIE1A to disable TIMER1_COMPA_vect (and turn off timer)
+  TIMSK1 &= (0 << OCIE1A);                    // Disable TIMER1_COMPA_vect until next call
 }
 
 /*
@@ -536,28 +504,6 @@ ISR(INT0_vect) {
 ISR(INT1_vect) {
   if (eventListenerListening && eventListenerIndex < __eventListenerMaxEvents) eventListenerDetections[eventListenerIndex++] = ticksSinceStart;
   eventListenerEventDetected = true;
-}
-
-/*
-    Interrupt service routine triggered at TIMER1_COMPA_vect
-    Trigger and monitor reward delivery
-*/
-ISR(TIMER1_COMPA_vect) {
-  if (pelletReleaseInProgress) {
-    if (pelletNumAttempts < __pelletMaxAttempts) {
-      digitalWrite(__rewardOutputPin, HIGH);
-      digitalWrite(__rewardOutputPin, LOW);
-      pelletNumAttempts++;
-    }
-    if (pelletNumAttempts == __pelletMaxAttempts) {
-      pelletReleaseInProgress = false;
-      TIMSK1 |= (0 << OCIE1A);  // Clear OCIE1A to disable TIMER1_COMPA_vect (and turn off timer)
-    }
-  } else if (fluidRewardInProgress) {
-    fluidRewardInProgress = false;
-    digitalWrite(__rewardOutputPin, LOW);
-    TIMSK1 |= (0 << OCIE1A); // Clear OCIE1A to disable TIMER1_COMPA_vect (and turn off timer)
-  }
 }
 
 /*
@@ -579,5 +525,32 @@ ISR(TIMER0_COMPA_vect) {
     }
   }
   ticksSinceStart++;
+}
+
+/*
+    Interrupt service routine triggered at TIMER1_COMPA_vect
+    Trigger pellet release
+*/
+ISR(TIMER1_COMPA_vect) {
+  if (pelletNumAttempts < __pelletMaxAttempts) {
+    digitalWrite(__rewardOutputPin, HIGH);
+    digitalWrite(__rewardOutputPin, LOW);
+    pelletStartReleaseTicks = ticksSinceStart;
+    pelletNumAttempts++;
+  } else
+    TIMSK1 &= (0 << OCIE1A);                    // Disable interrupt until next call
+}
+
+/*
+   Interrupt service routine triggered at TIMER1_COMPB_vect
+   Start and stop fluid reward
+*/
+ISR(TIMER1_COMPB_vect) {
+  if (!digitalRead(__rewardOutputPin))
+    digitalWrite(__rewardOutputPin, HIGH);
+  else {
+    digitalWrite(__rewardOutputPin, LOW);
+    TIMSK1 &= (0 << OCIE1B);
+  }
 }
 
