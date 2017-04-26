@@ -17,7 +17,10 @@
    ll2833@columbia.edu
    January 2017
 
-   March 2017--revisions for use with ATmega32u4 as well as ATmega328p based MCU, mainly using Timer0 and Timer1 which are the same on these two MCU's
+   March 2017--revisions for using Timer0 and Timer1 which are the same on many Arduino MCU's
+
+   NOTE:  this code will not work as of now on an Arduino Leonardo (ATmega32u4) because it does not use 
+   RS232 for its serial connection.  It is verified to work on Uno (ATmega328p).
 */
 
 /*
@@ -205,7 +208,7 @@ void setup() {
   // Write to serial the board specific constants for MATLAB object
   writeDeviceSettings();
 
-  // Wait for outgoing serial data to complete
+  // Wait for outgoing serial data to complete (might not be necessary)
   Serial.flush();
 }
 
