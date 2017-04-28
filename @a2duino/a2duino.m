@@ -3,7 +3,6 @@ classdef a2duino < handle
     %
     %  Lee Lovejoy
     %  ll2833@columbia.edu
-    %  January 2017
     
     %  NB regarding Arduino / MATLAB data type conversion:
     %
@@ -19,7 +18,7 @@ classdef a2duino < handle
     %  ATMega32u4 (Leonardo) 0, 1, 2, 3, and 7
     %  ATMega2560 (Mega 2560) 2, 3, 18, 19, 20, 21
     
-    %  Current pin assignments (works with Uno and Leonardo):
+    %  Current pin assignments (works with Uno):
     %  A00 - joystick X position
     %  A01 - joystick Y position
     %  A02 - range finder
@@ -40,28 +39,30 @@ classdef a2duino < handle
     %  D11
     %  D12 - TTL output:  reward trigger pin
     %  D13 - TTL output:  debug pin
-        
+    
     properties (Constant,Hidden)
         
         %  Define single byte (0-255) codes for communicating with Arduino.
         %  All commands with a 1 in the least significant bit (i.e. odd)
         %  will be executed immediately upon receipt, whereas commands
-        %  without a 1 in the lsb are accompanied by arguments
-        commandGetTicksSinceStart = uint8(1);
-        commandGetAdcVoltages = uint8(3);
-        commandGetAdcSchedule = uint8(7);
-        commandGetAdcStatus = uint8(9);
-        commandGetAdcBuffer = uint8(11);
-        commandGetEventListener = uint8(13);
-        commandGetPelletReleaseStatus = uint8(17);
-        commandGetDeviceSettings = uint8(19);
+        %  without a 1 in the lsb (even) are accompanied by arguments and
+        %  will be executed once all arguments have been acquired.
+        commandReadTicksSinceStart = uint8(1);
+        commandReadAdcVoltages = uint8(3);
+        commandReadAdcSchedule = uint8(7);
+        commandReadAdcStatus = uint8(9);
+        commandReadAdcBuffer = uint8(11);
+        commandReadEventListener = uint8(13);
+        commandReadFluidRewardStatus = uint8(15);
+        commandReadPelletReleaseStatus = uint8(17);
+        commandReadDeviceSettings = uint8(19);
         commandStartAdcSchedule = uint8(21);
         commandStopAdcSchedule = uint8(23);
         commandStartEventListener = uint8(25);
         commandStopEventListener = uint8(27);
         commandStartFluidReward = uint8(40);
         commandStartPelletRelease = uint8(41);
-        commandSetAdcSchedule = uint8(50);
+        commandWriteAdcSchedule = uint8(50);
     end
     
     properties (SetAccess=private)
@@ -96,10 +97,12 @@ classdef a2duino < handle
         maxReleaseAttempts
         
         lastSampleTime
-
-        releaseInProgress = false;
-        releaseDetected = false;
-        releaseFailed = false;
+        
+        pelletReleaseInProgress = false;
+        pelletReleaseDetected = false;        
+        
+        fluidReleaseInProgress = false;
+        fluidReleaseComplete = false;
     end
     
     properties (Dependent)
@@ -110,7 +113,10 @@ classdef a2duino < handle
     
     methods
         
+        %
         %  Class constructor
+        %
+        
         function obj = a2duino(varargin)
             
             %  Update parameter values
@@ -125,12 +131,31 @@ classdef a2duino < handle
             obj.serialObj.InputBufferSize = obj.inputBufferSize;
             fopen(obj.serialObj);
             
-            %  Obtain device settings so we can set default ADC schedule            
-            getDeviceSettings(obj,'receive');
-            setAdcSchedule(obj);            
+            %  Obtain device settings so we can set default ADC schedule
+            readDeviceSettings(obj,'receive');
+            writeAdcSchedule(obj);
         end
         
+        %
+        %  Class destructor
+        %
+        
+        function delete(obj)
+            obj.close;
+        end
+        
+        %
+        %  Close connection
+        %
+        function close(obj)
+            fclose(obj.serialObj);
+        end
+        
+        
+        %
         %  Dependent properties
+        %
+        
         function output = get.samplingRate(obj)
             output = 16e6 / (obj.prescalar0*(obj.compareMatchRegister0 + 1));
         end
@@ -142,7 +167,11 @@ classdef a2duino < handle
         function output = get.connectionOpen(obj)
             output = strcmpi(obj.serialObj.Status,'open');
         end
-                
+        
+        %
+        %  Display settings to command line
+        %
+        
         function showConnectionSettings(obj)
             fprintf('     serial port:  %s\n',obj.portName);
             fprintf('connection speed:  %d Bd\n',obj.baud);
@@ -182,13 +211,23 @@ classdef a2duino < handle
             fprintf('               ADC buffer:  %d bytes\n',obj.adcBufferSize);
         end
         
-        %  Class destructor
-        function delete(obj)
-            fclose(obj.serialObj);
+        function output = adcSchedule(obj)
+            output.numScheduledChannels = obj.numScheduledChannels;
+            output.scheduledChannelList = obj.scheduledChannelList;
+            output.numScheduledFrames = obj.numScheduledFrames;
+            output.onsetDelay = obj.onsetDelay;
+            output.useRingBuffer = obj.useRingBuffer;
+            output.numRequestedFrames = obj.numRequestedFrames;
         end
         
-        %  Set ADC schedule
-        function setAdcSchedule(obj,varargin)
+        %
+        %  Write commands to Arduino
+        %
+        
+        %  writeAdcSchedule
+        %
+        %  Optional name/value pair arguments to set ADC schedule
+        function writeAdcSchedule(obj,varargin)
             
             %  Stop ADC schedule before changing
             if(obj.adcScheduleRunning)
@@ -210,7 +249,7 @@ classdef a2duino < handle
             obj.adcBufferSize = obj.numScheduledFrames*obj.numScheduledChannels;
             
             %  Write schedule to Arduino
-            fwrite(obj.serialObj,obj.commandSetAdcSchedule);
+            fwrite(obj.serialObj,obj.commandWriteAdcSchedule);
             fwrite(obj.serialObj,uint8(8+obj.numScheduledChannels));
             fwrite(obj.serialObj,uint8(obj.numScheduledChannels));
             fwrite(obj.serialObj,uint8(obj.scheduledChannelList-1));
@@ -220,61 +259,80 @@ classdef a2duino < handle
             fwrite(obj.serialObj,typecast(int16(obj.numRequestedFrames),'uint8'));
         end
         
-        %  Start ADC schedule
+        %  startAdcSchedule
         function startAdcSchedule(obj)
-            obj.adcScheduleRunning = true;
-            fwrite(obj.serialObj,obj.commandStartAdcSchedule);
-        end
-        
-        %  Stop ADC schedule
-        function stopAdcSchedule(obj)
-            obj.adcScheduleRunning = false;
-            fwrite(obj.serialObj,obj.commandStopAdcSchedule);
-        end
-        
-        %  Start Event listener
-        function startEventListener(obj)
-            obj.eventListenerListening = true;
-            fwrite(obj.serialObj,obj.commandStartEventListener);
-        end
-        
-        %  Stop Event Listener
-        function stopEventListener(obj)
-            obj.eventListenerListening = false;
-            fwrite(obj.serialObj,obj.commandStopEventListener);
-        end
-        
-        %  Start Pellet Release
-        function startPelletRelease(obj)
-            if(~obj.releaseInProgress)
-                fwrite(obj.serialObj,obj.commandStartPelletRelease);
-                obj.releaseInProgress = true;
-                obj.releaseDetected = false;
-                obj.releaseFailed = false;
+            if(~obj.adcScheduleRunning)
+                obj.adcScheduleRunning = true;
+                fwrite(obj.serialObj,obj.commandStartAdcSchedule);
             end
         end
         
-        %  Start fluid reward, rewardDuration is in sec
-        %
-        %  Convert reward duration to set compare match register
-        function startFluidReward(obj,rewardDuration)
-            rewardDuration = 16e6 * (rewardDuration / obj.prescalar1) - 1;
-            fwrite(obj.serialObj,obj.commandStartFluidReward);
-            fwrite(obj.serialObj,uint8(2));
-            fwrite(obj.serialObj,typecast(int16(rewardDuration),'uint8'));
+        %  stopAdcSchedule
+        function stopAdcSchedule(obj)
+            if(obj.adcScheduleRunning)
+                obj.adcScheduleRunning = false;
+                fwrite(obj.serialObj,obj.commandStopAdcSchedule);
+            end
         end
         
-        %  Get time since start (msec)
-        function output = getTicksSinceStart(obj,varargin)
+        %  startEventListener
+        function startEventListener(obj)
+            if(~obj.eventListenerListening)
+                obj.eventListenerListening = true;
+                fwrite(obj.serialObj,obj.commandStartEventListener);
+            end
+        end
+        
+        %  stopEventListener
+        function stopEventListener(obj)
+            if(obj.eventListenerListening)
+                obj.eventListenerListening = false;
+                fwrite(obj.serialObj,obj.commandStopEventListener);
+            end
+        end
+        
+        %  startPelleRelease
+        %
+        %  Returns true if pellet release started
+        function output = startPelletRelease(obj)
+            output = ~obj.pelletReleaseInProgress;
+            if(output)
+                fwrite(obj.serialObj,obj.commandStartPelletRelease);
+                obj.pelletReleaseInProgress = true;
+                obj.pelletReleaseDetected = false;
+            end            
+        end
+        
+        %  startFluidReward
+        %
+        %  Requires reward duration in seconds
+        %  Returns true if fluid reward started
+        function output = startFluidReward(obj,rewardDuration)
+            output = ~obj.fluidReleaseInProgress;
+            if(output)
+                rewardDuration = 16e6 * (rewardDuration / obj.prescalar1) - 1;
+                fwrite(obj.serialObj,obj.commandStartFluidReward);
+                fwrite(obj.serialObj,uint8(2));
+                fwrite(obj.serialObj,typecast(int16(rewardDuration),'uint8'));
+                obj.fluidReleaseInProgress = true;
+                obj.fluidReleaseComplete = false;
+            end
+        end
+        
+        %  readTicksSinceStart
+        %
+        %  Optional argument 'send' or 'receive', default 'receive'
+        %  Returns number of ticks (typically msec) since connection opened
+        function output = readTicksSinceStart(obj,varargin)
             if(nargin==1 && ~obj.commandLock)
-                fwrite(obj.serialObj,obj.commandGetTicksSinceStart);
+                fwrite(obj.serialObj,obj.commandReadTicksSinceStart);
                 controlFlag = 'receive';
             else
                 controlFlag = varargin{1};
             end
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetTicksSinceStart);
+                    fwrite(obj.serialObj,obj.commandReadTicksSinceStart);
                 case 'receive'
                     if(~obj.commandLock)
                         output = fread(obj.serialObj,1,'uint32')*obj.timeStep;
@@ -282,17 +340,20 @@ classdef a2duino < handle
             end
         end
         
-        %  Get ADC voltages
-        function output = getAdcVoltages(obj,varargin)
+        %  readAdcVoltages
+        %
+        %  Optional argument 'send' or 'receive', default 'receive'
+        %  Returns vector of voltages on ADC        
+        function output = readAdcVoltages(obj,varargin)
             if(nargin==1 && ~obj.commandLock)
-                fwrite(obj.serialObj,obj.commandGetAdcVoltages);
+                fwrite(obj.serialObj,obj.commandReadAdcVoltages);
                 controlFlag = 'receive';
             else
                 controlFlag = varargin{1};
             end
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetAdcVoltages);
+                    fwrite(obj.serialObj,obj.commandReadAdcVoltages);
                 case 'receive'
                     if(~obj.commandLock)
                         num = fread(obj.serialObj,1,'int16');
@@ -301,17 +362,20 @@ classdef a2duino < handle
             end
         end
         
-        %  Get ADC Schedule
-        function output = getAdcSchedule(obj,varargin)
+        %  readAdcSchedule
+        %
+        %  Optional argument 'send' or 'receive', default 'receive'
+        %  Returns current ADC schedule on Arduino        
+        function output = readAdcSchedule(obj,varargin)
             if(nargin==1 && ~obj.commandLock)
-                fwrite(obj.serialObj,obj.commandGetAdcSchedule);
+                fwrite(obj.serialObj,obj.commandReadAdcSchedule);
                 controlFlag = 'receive';
             else
                 controlFlag = varargin{1};
             end
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetAdcSchedule);
+                    fwrite(obj.serialObj,obj.commandReadAdcSchedule);
                 case 'receive'
                     if(~obj.commandLock)
                         output.numScheduledChannels = fread(obj.serialObj,1,'int16');
@@ -324,17 +388,20 @@ classdef a2duino < handle
             end
         end
         
-        %  Get ADC Buffer
-        function output = getAdcBuffer(obj,varargin)
+        %  readAdcBuffer
+        %
+        %  Optional argument 'send' or 'receive', default 'receive'
+        %  Returns contents of ADC buffer        
+        function output = readAdcBuffer(obj,varargin)
             if(nargin==1 && ~obj.commandLock)
-                fwrite(obj.serialObj,obj.commandGetAdcBuffer);
+                fwrite(obj.serialObj,obj.commandReadAdcBuffer);
                 controlFlag = 'receive';
             else
                 controlFlag = varargin{1};
             end
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetAdcBuffer);
+                    fwrite(obj.serialObj,obj.commandReadAdcBuffer);
                 case 'receive'
                     if(~obj.commandLock)
                         output.bufferData = fread(obj.serialObj,[obj.numScheduledChannels,obj.numRequestedFrames],'int16');
@@ -353,17 +420,20 @@ classdef a2duino < handle
             end
         end
         
-        %  Get ADC status
-        function output = getAdcStatus(obj,varargin)
+        %  readAdcStatus
+        %
+        %  Optional argument 'send' or 'receive', default 'receive'
+        %  Returns true if ADC schedule running on Arduino        
+        function output = readAdcStatus(obj,varargin)
             if(nargin==1 && ~obj.commandLock)
-                fwrite(obj.serialObj,obj.commandGetAdcStatus);
+                fwrite(obj.serialObj,obj.commandReadAdcStatus);
                 controlFlag = 'receive';
             else
                 controlFlag = varargin{1};
             end
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetAdcStatus);
+                    fwrite(obj.serialObj,obj.commandReadAdcStatus);
                 case 'receive'
                     if(~obj.commandLock)
                         output = logical(fread(obj.serialObj,1,'uint8'));
@@ -372,17 +442,20 @@ classdef a2duino < handle
             end
         end
         
-        %  Get Event Listner
-        function output = getEventListener(obj,varargin)
+        %  readEventListener
+        %
+        %  Optional argument 'send' or 'receive', default 'receive'
+        %  Returns contents of events listener buffer 
+        function output = readEventListener(obj,varargin)
             if(nargin==1 && ~obj.commandLock)
-                fwrite(obj.serialObj,obj.commandGetEventListener);
+                fwrite(obj.serialObj,obj.commandReadEventListener);
                 controlFlag = 'receive';
             else
                 controlFlag = varargin{1};
             end
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetEventListener);
+                    fwrite(obj.serialObj,obj.commandReadEventListener);
                 case 'receive'
                     if(~obj.commandLock)
                         output.numEvents = fread(obj.serialObj,1,'int16');
@@ -395,45 +468,78 @@ classdef a2duino < handle
             end
         end
         
-        %  Get pellet release status
-        function output = getPelletReleaseStatus(obj,varargin)
+        %  readFluidRewardStatus
+        %
+        %  Optional argument 'send' or 'receive', default 'receive'
+        function readFluidRewardStatus(obj,varargin)
             if(nargin==1 && ~obj.commandLock)
-                fwrite(obj.serialObj,obj.commandGetPelletReleaseStatus);
+                fwrite(obj.serialObj,obj.commandReadFluidRewardStatus);
                 controlFlag = 'receive';
             else
                 controlFlag = varargin{1};
             end
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetPelletReleaseStatus);
+                    fwrite(obj.serialObj,obj.commandReadFluidRewardStatus);
                 case 'receive'
                     if(~obj.commandLock)
-                        obj.releaseDetected = logical(fread(obj.serialObj,1,'uint8'));
-                        output.releaseTime = fread(obj.serialObj,1,'uint32');
-                        output.numAttempts = fread(obj.serialObj,1,'int16');                        
-                        if(obj.releaseDetected)
-                            obj.releaseInProgress = false;
-                            obj.releaseFailed = false;
-                        elseif(output.numAttempts == obj.maxReleaseAttempts)
-                            obj.releaseInProgress = false;
-                            obj.releaseFailed = true;
+                        obj.fluidReleaseComplete = logical(fread(obj.serialObj,1,'uint8'));
+                        if(obj.fluidReleaseComplete)
+                            obj.fluidReleaseInProgress = false;
+                        else
+                            obj.fluidReleaseInProgress = true;
                         end
                     end
             end
         end
         
-        
-        %  Get device settings
-        function getDeviceSettings(obj,varargin)
-            if(nargin == 1 && ~obj.commandLock)
-                fwrite(obj.serialObj,obj.commandGetDeviceSettings);
+        %  readPelletReleaseStatus
+        %
+        %  Optional argument 'send' or 'receive', default 'receive'
+        %  Returns struct with following fields:
+        %  output.releaseTime--time in msec between last release trigger and
+        %  successfull release
+        %  output.numAttempts--number of release triggers given
+        %  output.releaseFailed--true if release failed
+        function output = readPelletReleaseStatus(obj,varargin)
+            if(nargin==1 && ~obj.commandLock)
+                fwrite(obj.serialObj,obj.commandReadPelletReleaseStatus);
                 controlFlag = 'receive';
             else
                 controlFlag = varargin{1};
             end
             switch controlFlag
                 case 'send'
-                    fwrite(obj.serialObj,obj.commandGetDeviceSettings);
+                    fwrite(obj.serialObj,obj.commandReadPelletReleaseStatus);
+                case 'receive'
+                    if(~obj.commandLock)
+                        obj.pelletReleaseDetected = logical(fread(obj.serialObj,1,'uint8'));
+                        output.releaseTime = fread(obj.serialObj,1,'uint32');
+                        output.numAttempts = fread(obj.serialObj,1,'int16');
+                        if(obj.pelletReleaseDetected)
+                            obj.pelletReleaseInProgress = false;
+                            output.releaseFailed = false;
+                        elseif(output.numAttempts == obj.maxReleaseAttempts)
+                            obj.pelletReleaseInProgress = false;
+                            output.releaseFailed = true;
+                        end
+                    end
+            end
+        end
+        
+        %  readDeviceSettings
+        %
+        %  Optional argument 'send' or 'receive', default 'receive'
+        function readDeviceSettings(obj,varargin)
+            if(nargin == 1 && ~obj.commandLock)
+                fwrite(obj.serialObj,obj.commandReadDeviceSettings);
+                controlFlag = 'receive';
+            else
+                controlFlag = varargin{1};
+            end
+            switch controlFlag
+                case 'send'
+                    fwrite(obj.serialObj,obj.commandReadDeviceSettings);
                 case 'receive'
                     if(~obj.commandLock)
                         switch dec2hex(fread(obj.serialObj,1,'int16'),2)
@@ -458,7 +564,14 @@ classdef a2duino < handle
             end
         end
         
-        %  Add command to command queue
+        
+        %
+        %  Command queue control functions
+        %
+        
+        %  addCommand
+        %
+        %  Required argument name of command to add to queue
         function addCommand(obj,varargin)
             if(ismethod(obj,varargin{1}))
                 obj.commandQueue{end+1} = varargin{1};
@@ -467,7 +580,9 @@ classdef a2duino < handle
             end
         end
         
-        %  Run commands in command queue
+        %  sendCommands
+        %
+        %  Write command queue to Arduino
         function sendCommands(obj)
             flushinput(obj.serialObj);
             for i=1:length(obj.commandQueue)
@@ -476,7 +591,9 @@ classdef a2duino < handle
             obj.commandLock = true;
         end
         
-        %  Retreive output from command queue
+        %  retrieveOutput
+        %
+        %  Read from Arduino the buffer of outputs of the commands in queue
         function retrieveOutput(obj)
             obj.commandLock = false;
             obj.resultBuffer = struct([]);
@@ -487,14 +604,19 @@ classdef a2duino < handle
             obj.commandQueue = cell(0);
         end
         
-        %  Recover output from result buffer
-        %  This will return all outputs corresponding to the specified
-        %  command; if there is none, then output will be empty
+        %  recoverResult
+        %
+        %  Recover the output of a specific command from the retrieved
+        %  result buffer
         function output = recoverResult(obj,varargin)
+            
+            %  Returns all outputs corresponding to the specified command;
+            %  if there is none, then output will be empty
             output = [obj.resultBuffer(strcmp(varargin{1},{obj.resultBuffer.command})).output];
         end
     end
     
+    %  Following are static methods defined in separate files.
     methods (Static)
         p = getAdcData(p)
         p = getEventsData(p)

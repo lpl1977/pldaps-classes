@@ -76,6 +76,7 @@ const int __writeAdcSchedule = 7;
 const int __writeAdcStatus = 9;
 const int __writeAdcBuffer = 11;
 const int __writeeventListener = 13;
+const int __writeFluidRewardStatus = 15;
 const int __writePelletReleaseStatus = 17;
 const int __writeDeviceSettings = 19;
 const int __startAdcSchedule = 21;

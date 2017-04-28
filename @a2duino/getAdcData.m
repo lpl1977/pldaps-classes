@@ -10,7 +10,7 @@ function p = getAdcData(p)
 %  ll2833@columbia.edu
 
 %  Recover adc data from the result buffer
-a2duinoOutput = p.functionHandles.a2duinoObj.recoverResult('getAdcBuffer');
+a2duinoOutput = p.functionHandles.a2duinoObj.recoverResult('readAdcBuffer');
 
 %  a2duinoOutput may be an array of structures if there were multiple calls
 %  to getAdcBuffer before the results were retrieved, so iterate
