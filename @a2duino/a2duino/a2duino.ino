@@ -10,26 +10,37 @@
    Some notes on interrupts:
    http://www.gammon.com.au/interrupts
 
+   Some notes on timers:
+   http://www.avrfreaks.net/forum/tut-c-newbies-guide-avr-timers?name=PNphpBB2&file=viewtopic&t=50106
+
    Lee Lovejoy
    ll2833@columbia.edu
    January 2017
+
+   March 2017--revisions for using Timer0 and Timer1 which are the same on many Arduino MCU's
+
+   NOTE:  this code will not work as of now on an Arduino Leonardo (ATmega32u4) because it does not use 
+   RS232 for its serial connection.  It is verified to work on Uno (ATmega328p).
 */
 
 /*
    Constants
 */
 
-// Serial communication
-const unsigned long __baud = 230400;
+// Serial communication rate in bits per second
+const unsigned long __baudRate = 230400;
 
-// Timers
-// (CMR = 12499, prescalar = 256) give a sampling rate of 5 Hz
-// (CMR = 24999, prescalar = 64) give a sampling rate of 10 Hz
-// (CMR = 249, prescalar = 64) give a sampling rate of 1KHz
+// Timers; timer0 is the primary clock for analog data sampling
+// Target Timer Count = (Input Frequency / Prescale) / Target Frequency - 1
+// Input frequency is 16 MHz
+// Timer0 is 8-bit; 256 values
+// Timer1 is 16-bit, 65536 values
+// (CMR = 249, prescalar = 64) give a sampling rate of 1KHz on Timer0
+// (CMR = 12499, prescalar = 256) give a sampling rate of 5 Hz on Timer1
+const int __compareMatchRegisterTimer0 = 249;
+const int __prescalarTimer0 = 64;
 const int __compareMatchRegisterTimer1 = 12499;
 const int __prescalarTimer1 = 256;
-const int __compareMatchRegisterTimer2 = 249;
-const int __prescalarTimer2 = 64;
 
 // External interrupts
 // Interrupt Sense Control on ISC00 and ISC01:
@@ -45,17 +56,16 @@ const int __externalInterruptRequest1PinMode = INPUT_PULLUP;
 // Analog data acquisition buffer
 const int __adcNumChannels = 6;
 const int __adcChannels[__adcNumChannels] = {0, 1, 2, 3, 4, 5};
-const int __adcMaxBufferSize = 500;
+const int __adcMaxBufferSize = 516;
 
 // Reward delivery
-const int __rewardNumOutputPins = 1;
-const int __rewardOutputPin0 = 12;
-const int __rewardOutputPin0InitialState = LOW;
+const int __rewardOutputPin = 12;
+const int __rewardOutputPinInitialState = LOW;
+const int __pelletMaxAttempts = 11;
 
-// Event listeners
-const int __eventListenersNumInputPins = 1;
-const int __eventListener0Pin = __externalInterruptRequest1;
-const int __eventListenersMaxEvents = 30;
+// Event listener
+const int __eventListenerPin = __externalInterruptRequest1;
+const int __eventListenerMaxEvents = 30;
 
 // Command codes
 const int __maxInstructionLength = 100;
@@ -65,13 +75,16 @@ const int __writeAdcVoltages = 3;
 const int __writeAdcSchedule = 7;
 const int __writeAdcStatus = 9;
 const int __writeAdcBuffer = 11;
-const int __writeEventListener0 = 13;
+const int __writeeventListener = 13;
+const int __writeFluidRewardStatus = 15;
 const int __writePelletReleaseStatus = 17;
+const int __writeDeviceSettings = 19;
 const int __startAdcSchedule = 21;
 const int __stopAdcSchedule = 23;
-const int __startEventListener0 = 25;
-const int __stopEventListener0 = 27;
-const int __startPelletRelease = 42;
+const int __starteventListener = 25;
+const int __stopeventListener = 27;
+const int __startFluidReward = 40;
+const int __startPelletRelease = 41;
 const int __readAdcSchedule = 50;
 
 /*
@@ -98,20 +111,18 @@ int adcNumRequestedFrames;
 int adcNumRequestedBytes;
 int adcScheduledChannelList[__adcNumChannels];
 
-// Pellet delivery--on rewardOutputPin0, controlled via externalInterruptRequest0
-volatile boolean pelletReleaseInProgress = false;
-volatile boolean pelletDropDetected = false;
-unsigned long pelletStartReleaseTicks;
+// Pellet delivery--on rewardOutputPin, controlled via externalInterruptRequest0
+volatile boolean pelletReleaseDetected = false;
+volatile unsigned long pelletStartReleaseTicks;
 volatile unsigned long pelletCompleteReleaseTicks;
 volatile int pelletNumAttempts;
-int pelletMaxAttempts = 11;
 
 // Event Listener
-boolean eventListener0Listening = false;
-volatile boolean eventListener0EventDetected = false;
-unsigned long eventListener0StartTicks;
-volatile unsigned long eventListener0Detections[__eventListenersMaxEvents];
-volatile int eventListener0Index = 0;
+boolean eventListenerListening = false;
+volatile boolean eventListenerEventDetected = false;
+unsigned long eventListenerStartTicks;
+volatile unsigned long eventListenerDetections[__eventListenerMaxEvents];
+volatile int eventListenerIndex = 0;
 
 // Function for converting bytes to integers
 int bytes2int(byte *a) {
@@ -125,13 +136,36 @@ int bytes2int(byte *a) {
 */
 
 void setup() {
-  int i;
 
-  // Prior to initializing timers, disable all interrupts.
-  noInterrupts();
+  // Initialize and enable Timer0 (clock for ADC)
+  TIMSK0 &= (0 << OCIE0A);                  // Clear OCIE0A to DISABLE compare A match interrupt on TIMER0_COMPA_vect
+  TCCR0A = 0;                               // Clear TCCR0A register (normal operation)
+  TCCR0B = 0;                               // Clear TCCR0B register (normal operation)
+  TCNT0 = 0;                                // Initialize counter value to 0
+  OCR0A = __compareMatchRegisterTimer0;     // Set compare match register
+  TCCR0A |= (1 << WGM01);                   // Set TCCR0A bit WGM21 to enable CTC mode
+  switch (__prescalarTimer0) {
+    case 1:
+      TCCR0B |= (1 << CS00);                // Set TCCR0B bit CS00 for no prescaling
+      break;
+    case 8:
+      TCCR0B |= (1 << CS01);                // set TCRR0B bit CS01 for 8 prescaling
+      break;
+    case 64:
+      TCCR0B |= (1 << CS01) | (1 << CS00);  // Set TCCR0B bit CS01 and CS00 for 64 prescaling
+      break;
+    case 256:
+      TCCR0B |= (1 << CS02);                // Set TCCR0B bit CS02 for 256 prescaling
+      break;
+    case 1024:
+      TCCR0B |= (1 << CS02) | (1 << CS00);  // Set TCCR0B bits CS02 and CS00 for 1024 prescaling
+      break;
+  }
+  TIMSK0 |= (1 << OCIE0A);                  // Set OCIE0A to ENABLE compare A match interrupt on TIMER0_COMPA_vect
 
-  // Initialize timer1
-
+  // Initialize Timer1 but do not enable (for reward system)
+  TIMSK1 &= (0 << OCIE1A);                  // Set OCIE1A to DISABLE compare A match interrupt on TIMER1_COMPA_vect
+  TIMSK1 &= (0 << OCIE1B);                  // Set OCIE1B to DISABLE compare B match interrupt on TIMER1_COMBB_vect
   TCCR1A = 0;                               // Clear TCCR1A register (normal operation)
   TCCR1B = 0;                               // Clear TCCR1B register (normal operation)
   TCNT1  = 0;                               // Initialize counter value to 0
@@ -154,42 +188,6 @@ void setup() {
       TCCR1B |= (1 << CS12) | (1 << CS10);  // Set TCCR1B bits CS12 and CS10 for 1024 prescaling
       break;
   }
-  TIMSK1 |= (1 << OCIE1A);                  // Set OCIE1A to enable compare A match interrupt on TIMER1_COMPA_vect
-
-  // Initialize timer2
-
-  TCCR2A = 0;                               // Clear TCCR2A register (normal operation)
-  TCCR2B = 0;                               // Clear TCCR2B register (normal operation)
-  TCNT2 = 0;                                // Initialize counter value to 0
-  OCR2A = __compareMatchRegisterTimer2;     // Set compare match register
-  TCCR2A |= (1 << WGM21);                   // Set TCCR2A bit WGM21 to enable CTC mode
-  switch (__prescalarTimer2) {
-    case 1:
-      TCCR2B |= (1 << CS20);                // Set TCCR2B bit CS20 for no prescaling
-      break;
-    case 8:
-      TCCR2B |= (1 << CS21);                // set TCRR2B bit CS21 for 8 prescaling
-      break;
-    case 32:
-      TCCR2B |= (1 << CS21) | (1 << CS20);  // Set TCCR2B bit CS21 and CS20 for 32 prescaling
-      break;
-    case 64:
-      TCCR2B |= (1 << CS22);                // Set TCCR2B bit CS22 for 64 prescaling
-      break;
-    case 128:
-      TCCR2B |= (1 << CS22) | (1 << CS20);  // Set TCCR2B bits CS22 and CS20 for 128 prescaling
-      break;
-    case 256:
-      TCCR2B |= (1 << CS22) | (1 << CS21);  // Set TCCR2B bits CS22 and CS21 for 256 prescaling
-      break;
-    case 1024:
-      TCCR2B |= (1 << CS22) | (1 << CS21) | (1 << CS20);  // Set TCCR2B bits CS22, CS21, and CS20 for 1024 prescaling
-      break;
-  }
-  TIMSK2 |= (1 << OCIE2A);
-
-  // Once timers have been initialized, enable interrupts
-  interrupts();
 
   // Set pin modes for external interrupts
   pinMode(__externalInterruptRequest0, __externalInterruptRequest0PinMode);
@@ -202,30 +200,25 @@ void setup() {
   EIMSK |= (1 << INT1);
 
   // Set digital output pin
-  pinMode(__rewardOutputPin0, OUTPUT);
-  digitalWrite(__rewardOutputPin0, __rewardOutputPin0InitialState);
+  pinMode(__rewardOutputPin, OUTPUT);
+  digitalWrite(__rewardOutputPin, __rewardOutputPinInitialState);
 
-  // Open serial connection
-  Serial.begin(__baud);
+  // Open serial connection at minimum baud, then transmit board data
+  Serial.begin(230400);
 
-  // Write to serial the Arduinio specific constants for MATLAB object
-  Serial.write((byte*)&__compareMatchRegisterTimer1, sizeof(__compareMatchRegisterTimer1));
-  Serial.write((byte*)&__prescalarTimer1, sizeof(__prescalarTimer1));
-  Serial.write((byte*)&__compareMatchRegisterTimer2, sizeof(__compareMatchRegisterTimer2));
-  Serial.write((byte*)&__prescalarTimer2, sizeof(__prescalarTimer2));
-  Serial.write((byte*)&__adcMaxBufferSize, sizeof(__adcMaxBufferSize));
-  Serial.write((byte*)&__adcNumChannels, sizeof(__adcNumChannels));
-  Serial.write((byte*)&__rewardNumOutputPins, sizeof(__rewardNumOutputPins));
-  Serial.write((byte*)&__eventListenersNumInputPins, sizeof(__eventListenersNumInputPins));
-  Serial.write((byte*)&__eventListenersMaxEvents, sizeof(__eventListenersMaxEvents));
+  // Write to serial the board specific constants for MATLAB object
+  writeDeviceSettings();
+
+  // Wait for outgoing serial data to complete (might not be necessary)
+  Serial.flush();
 }
 
 /*
    loop
 
-   Receiving serial data is slow, and we want to receive the instruction without "blocking"
-   the Arduino from other processes.  Hence I need to store incoming serial data into a buffer
-   during the loop; once it is complete, I can process the instruction.
+   We want to receive instructions without "blocking" the Arduino from other processes.
+   Hence I need to store incoming serial data into a buffer during the loop; once it is
+   complete, I can process the instruction.
 
    Any command with a one in the least significant bit will be executed immediately.
 */
@@ -284,12 +277,16 @@ void processInstruction(int command) {
       writeAdcBuffer();
       break;
 
-    case __writeEventListener0:
-      writeEventListener0();
+    case __writeeventListener:
+      writeeventListener();
       break;
 
     case __writePelletReleaseStatus:
       writePelletReleaseStatus();
+      break;
+
+    case __writeDeviceSettings:
+      writeDeviceSettings();
       break;
 
     case __startAdcSchedule:
@@ -300,12 +297,16 @@ void processInstruction(int command) {
       stopAdcSchedule();
       break;
 
-    case __startEventListener0:
-      startEventListener0();
+    case __starteventListener:
+      starteventListener();
       break;
 
-    case __stopEventListener0:
-      stopEventListener0();
+    case __stopeventListener:
+      stopeventListener();
+      break;
+
+    case __startFluidReward:
+      startFluidReward();
       break;
 
     case __startPelletRelease:
@@ -367,11 +368,9 @@ void writeAdcBuffer() {
   int adcBufferIndex__ = adcBufferIndex;
   int startIndex;
   unsigned long adcLastTick__ = adcLastTick;
-  unsigned long t;
 
   startIndex = (adcBufferIndex__ - adcNumRequestedFrames * adcNumScheduledChannels) % adcBufferSize;
 
-  t = micros();
   if (adcBufferIndex__ >= adcNumRequestedBytes)
     Serial.write((byte*)&adcBuffer[adcBufferIndex__ - adcNumRequestedBytes], sizeof(adcBuffer[0])*adcNumRequestedBytes);
   else {
@@ -379,29 +378,44 @@ void writeAdcBuffer() {
     Serial.write((byte*)&adcBuffer[0], sizeof(adcBuffer[0])*adcBufferIndex__);
   }
   Serial.write((byte*)&adcLastTick__, sizeof(adcLastTick__));
-  t = micros() - t;
-  Serial.write((byte*)&t, sizeof(t));
 }
 
 /*
-   writeEventListener0
+   writeEventListener
 */
-void writeEventListener0() {
-  Serial.write((byte*)&eventListener0Index, sizeof(eventListener0Index));
-  if (eventListener0Index > 0) Serial.write((byte*)eventListener0Detections, sizeof(eventListener0Detections[0])*eventListener0Index);
-  eventListener0Index = 0;
-  eventListener0EventDetected = false;
+void writeeventListener() {
+  Serial.write((byte*)&eventListenerIndex, sizeof(eventListenerIndex));
+  if (eventListenerIndex > 0) Serial.write((byte*)eventListenerDetections, sizeof(eventListenerDetections[0])*eventListenerIndex);
+  eventListenerIndex = 0;
+  eventListenerEventDetected = false;
 }
 
 /*
    writePelletReleaseStatus
 */
 void writePelletReleaseStatus() {
-  Serial.write(pelletReleaseInProgress);
-  Serial.write(pelletDropDetected);
+  Serial.write(pelletReleaseDetected);
   Serial.write((byte*)&pelletCompleteReleaseTicks, sizeof(pelletCompleteReleaseTicks));
   Serial.write((byte*)&pelletNumAttempts, sizeof(pelletNumAttempts));
 }
+
+/*
+   writeDeviceSettings
+*/
+void writeDeviceSettings() {
+  int mcuType = SIGNATURE_2;
+  Serial.write((byte*)&mcuType, sizeof(mcuType));
+  Serial.write((byte*)&__compareMatchRegisterTimer0, sizeof(__compareMatchRegisterTimer0));
+  Serial.write((byte*)&__prescalarTimer0, sizeof(__prescalarTimer0));
+  Serial.write((byte*)&__compareMatchRegisterTimer1, sizeof(__compareMatchRegisterTimer1));
+  Serial.write((byte*)&__prescalarTimer1, sizeof(__prescalarTimer1));
+  Serial.write((byte*)&__adcMaxBufferSize, sizeof(__adcMaxBufferSize));
+  Serial.write((byte*)&__adcNumChannels, sizeof(__adcNumChannels));
+  Serial.write((byte*)&__eventListenerMaxEvents, sizeof(__eventListenerMaxEvents));
+  Serial.write((byte*)&__pelletMaxAttempts, sizeof(__pelletMaxAttempts));
+}
+
+
 /*
    startAdcSchedule
 */
@@ -421,34 +435,43 @@ void stopAdcSchedule() {
 }
 
 /*
-   startEventListener0
+   starteventListener
 */
-void startEventListener0() {
-  eventListener0Listening = true;
-  eventListener0Index = 0;
-  eventListener0StartTicks = ticksSinceStart;
-  eventListener0EventDetected = false;
+void starteventListener() {
+  eventListenerListening = true;
+  eventListenerIndex = 0;
+  eventListenerStartTicks = ticksSinceStart;
+  eventListenerEventDetected = false;
 }
 
 /*
-   stopEventListener0
+   stopeventListener
 */
-void stopEventListener0() {
-  eventListener0Listening = false;
-  eventListener0EventDetected = false;
+void stopeventListener() {
+  eventListenerListening = false;
+  eventListenerEventDetected = false;
+}
+
+/*
+   startFluidReward
+*/
+void startFluidReward() {
+  TCNT1 = 0;                                // Reset counter
+  OCR1B = bytes2int(&instruction[0]);       // Set compare match register B to fluid reward duration
+  OCR1A = OCR1B;                            // Make sure OCR1A == OCR1B
+  TIMSK1 |= (1 << OCIE1B);                  // Enable interrupt TIMER1_COMPB_vect
 }
 
 /*
    startPelletRelease
 */
 void startPelletRelease() {
-  pelletMaxAttempts = instruction[0];
-  pelletReleaseInProgress = true;
-  pelletDropDetected = false;
-  pelletStartReleaseTicks = ticksSinceStart;
+  pelletReleaseDetected = false;
   pelletCompleteReleaseTicks = 0;
   pelletNumAttempts = 0;
-  TCNT1  = __compareMatchRegisterTimer1 - 1;  // This resets the timer so that we count from first attempt
+  OCR1A  = __compareMatchRegisterTimer1;    // Set compare match register A
+  TCNT1  = 0;                               // Reset counter
+  TIMSK1 |= (1 << OCIE1A);                  // Enable interrupt TIMER1_COMPA_vect
 }
 
 /*
@@ -468,39 +491,30 @@ void readAdcSchedule() {
   adcBufferSize = adcNumScheduledFrames * adcNumScheduledChannels;
   adcNumRequestedBytes = adcNumRequestedFrames * adcNumScheduledChannels;
 }
+
 /*
   Interrupt service routine triggered at INT0_vect (external interrupt request 0, pin D2)
+  Detect pellet release
 */
 ISR(INT0_vect) {
-  pelletDropDetected = true;
+  pelletReleaseDetected = true;
   pelletCompleteReleaseTicks = ticksSinceStart - pelletStartReleaseTicks;
-  pelletReleaseInProgress = false;
+  TIMSK1 &= (0 << OCIE1A);                    // Disable TIMER1_COMPA_vect until next call
 }
 
 /*
   Interrupt service routine triggered at INT1_vect (external interrupt request 1, pin D3)
 */
 ISR(INT1_vect) {
-  if (eventListener0Listening && eventListener0Index < __eventListenersMaxEvents) eventListener0Detections[eventListener0Index++] = ticksSinceStart;
-  eventListener0EventDetected = true;
+  if (eventListenerListening && eventListenerIndex < __eventListenerMaxEvents) eventListenerDetections[eventListenerIndex++] = ticksSinceStart;
+  eventListenerEventDetected = true;
 }
 
 /*
-    Interrupt service routine triggered at TIMER1_COMPA_vect
+   Interrupt service routine triggered at TIMER0_COMPA_vect
+   Capture analog data
 */
-ISR(TIMER1_COMPA_vect) {
-  if (pelletReleaseInProgress && !pelletDropDetected && pelletNumAttempts < pelletMaxAttempts) {
-    digitalWrite(__rewardOutputPin0, HIGH);
-    digitalWrite(__rewardOutputPin0, LOW);
-    pelletNumAttempts++;
-  } else if (pelletReleaseInProgress)
-    pelletReleaseInProgress = false;
-}
-
-/*
-   Interrupt service routine triggered at TIMER2_COMPA_vect
-*/
-ISR(TIMER2_COMPA_vect) {
+ISR(TIMER0_COMPA_vect) {
   int i;
 
   for (i = 0; i < __adcNumChannels; i++) adcVoltages[i] = analogRead(i);
@@ -515,5 +529,32 @@ ISR(TIMER2_COMPA_vect) {
     }
   }
   ticksSinceStart++;
+}
+
+/*
+    Interrupt service routine triggered at TIMER1_COMPA_vect
+    Trigger pellet release
+*/
+ISR(TIMER1_COMPA_vect) {
+  if (pelletNumAttempts < __pelletMaxAttempts) {
+    digitalWrite(__rewardOutputPin, HIGH);
+    digitalWrite(__rewardOutputPin, LOW);
+    pelletStartReleaseTicks = ticksSinceStart;
+    pelletNumAttempts++;
+  } else
+    TIMSK1 &= (0 << OCIE1A);                    // Disable interrupt until next call
+}
+
+/*
+   Interrupt service routine triggered at TIMER1_COMPB_vect
+   Start and stop fluid reward
+*/
+ISR(TIMER1_COMPB_vect) {
+  if (!digitalRead(__rewardOutputPin))
+    digitalWrite(__rewardOutputPin, HIGH);
+  else {
+    digitalWrite(__rewardOutputPin, LOW);
+    TIMSK1 &= (0 << OCIE1B);
+  }
 }
 

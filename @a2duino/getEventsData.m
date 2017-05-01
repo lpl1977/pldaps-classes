@@ -10,7 +10,7 @@ function p = getEventsData(p)
 %  ll2833@columbia.edu
 
 %  Recover events data from the result buffer
-a2duinoOutput = p.functionHandles.a2duinoObj.recoverResult('getEventListener0');
+a2duinoOutput = p.functionHandles.a2duinoObj.recoverResult('readEventListener0');
 
 %  a2duinoOutput may be an array of structures if there were multiple calls
 %  to getEventListener0 before the results were retrieved, so iterate
