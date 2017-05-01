@@ -98,11 +98,8 @@ classdef a2duino < handle
         
         lastSampleTime
         
-        pelletReleaseInProgress = false;
-        pelletReleaseDetected = false;        
-        
-        fluidReleaseInProgress = false;
-        fluidReleaseComplete = false;
+        rewardInProgress = false;
+        rewardCompleted = false;
     end
     
     properties (Dependent)
@@ -133,7 +130,6 @@ classdef a2duino < handle
             
             %  Obtain device settings so we can set default ADC schedule
             readDeviceSettings(obj,'receive');
-            writeAdcSchedule(obj);
         end
         
         %
@@ -181,7 +177,6 @@ classdef a2duino < handle
             else
                 fprintf('          Status:  closed\n');
             end
-            fprintf('\n');
         end
         
         function showDeviceSettings(obj)
@@ -211,14 +206,6 @@ classdef a2duino < handle
             fprintf('               ADC buffer:  %d bytes\n',obj.adcBufferSize);
         end
         
-        function output = adcSchedule(obj)
-            output.numScheduledChannels = obj.numScheduledChannels;
-            output.scheduledChannelList = obj.scheduledChannelList;
-            output.numScheduledFrames = obj.numScheduledFrames;
-            output.onsetDelay = obj.onsetDelay;
-            output.useRingBuffer = obj.useRingBuffer;
-            output.numRequestedFrames = obj.numRequestedFrames;
-        end
         
         %
         %  Write commands to Arduino
@@ -295,11 +282,11 @@ classdef a2duino < handle
         %
         %  Returns true if pellet release started
         function output = startPelletRelease(obj)
-            output = ~obj.pelletReleaseInProgress;
+            output = ~obj.rewardInProgress;
             if(output)
                 fwrite(obj.serialObj,obj.commandStartPelletRelease);
-                obj.pelletReleaseInProgress = true;
-                obj.pelletReleaseDetected = false;
+                obj.rewardInProgress = true;
+                obj.rewardCompleted = false;
             end            
         end
         
@@ -308,14 +295,14 @@ classdef a2duino < handle
         %  Requires reward duration in seconds
         %  Returns true if fluid reward started
         function output = startFluidReward(obj,rewardDuration)
-            output = ~obj.fluidReleaseInProgress;
+            output = ~obj.rewardInProgress;
             if(output)
                 rewardDuration = 16e6 * (rewardDuration / obj.prescalar1) - 1;
                 fwrite(obj.serialObj,obj.commandStartFluidReward);
                 fwrite(obj.serialObj,uint8(2));
                 fwrite(obj.serialObj,typecast(int16(rewardDuration),'uint8'));
-                obj.fluidReleaseInProgress = true;
-                obj.fluidReleaseComplete = false;
+                obj.rewardInProgress = true;
+                obj.rewardCompleted = false;
             end
         end
         
@@ -471,7 +458,7 @@ classdef a2duino < handle
         %  readFluidRewardStatus
         %
         %  Optional argument 'send' or 'receive', default 'receive'
-        function readFluidRewardStatus(obj,varargin)
+        function output = readFluidRewardStatus(obj,varargin)
             if(nargin==1 && ~obj.commandLock)
                 fwrite(obj.serialObj,obj.commandReadFluidRewardStatus);
                 controlFlag = 'receive';
@@ -483,14 +470,15 @@ classdef a2duino < handle
                     fwrite(obj.serialObj,obj.commandReadFluidRewardStatus);
                 case 'receive'
                     if(~obj.commandLock)
-                        obj.fluidReleaseComplete = logical(fread(obj.serialObj,1,'uint8'));
-                        if(obj.fluidReleaseComplete)
-                            obj.fluidReleaseInProgress = false;
+                        obj.rewardCompleted = logical(fread(obj.serialObj,1,'uint8'));
+                        if(obj.rewardCompleted)
+                            obj.rewardInProgress = false;
                         else
-                            obj.fluidReleaseInProgress = true;
+                            obj.rewardInProgress = true;
                         end
                     end
             end
+            output = true;
         end
         
         %  readPelletReleaseStatus
@@ -513,14 +501,14 @@ classdef a2duino < handle
                     fwrite(obj.serialObj,obj.commandReadPelletReleaseStatus);
                 case 'receive'
                     if(~obj.commandLock)
-                        obj.pelletReleaseDetected = logical(fread(obj.serialObj,1,'uint8'));
+                        obj.rewardCompleted = logical(fread(obj.serialObj,1,'uint8'));
                         output.releaseTime = fread(obj.serialObj,1,'uint32');
                         output.numAttempts = fread(obj.serialObj,1,'int16');
-                        if(obj.pelletReleaseDetected)
-                            obj.pelletReleaseInProgress = false;
+                        if(obj.rewardCompleted)
+                            obj.rewardInProgress = false;
                             output.releaseFailed = false;
                         elseif(output.numAttempts == obj.maxReleaseAttempts)
-                            obj.pelletReleaseInProgress = false;
+                            obj.rewardInProgress = false;
                             output.releaseFailed = true;
                         end
                     end
@@ -614,6 +602,17 @@ classdef a2duino < handle
             %  if there is none, then output will be empty
             output = [obj.resultBuffer(strcmp(varargin{1},{obj.resultBuffer.command})).output];
         end
+    end
+    
+    methods (Static)
+        function output = getAdcScheduleStruct
+            output.numScheduledChannels = [];
+            output.scheduledChannelList = [];
+            output.numScheduledFrames = [];
+            output.onsetDelay = [];
+            output.useRingBuffer = [];
+            output.numRequestedFrames = [];
+        end        
     end
     
     %  Following are static methods defined in separate files.
