@@ -20,6 +20,7 @@ classdef trialManager < handle
         trialNumber = 0;
         trialList
         maxTrials
+        numDecks = 1;
         trialTokens
         sequentialErrors
         sequentialCorrects
@@ -43,10 +44,15 @@ classdef trialManager < handle
             for i=1:2:nargin
                 obj.(varargin{i}) = varargin{i+1};
             end
-            if(~any(strcmp('maxTrials',varargin(1:2:nargin))))
-                obj.maxTrials = numel(obj.conditions);
-            end
+            
+            %  Replicate conditions for the total number of decks
+            obj.conditions = repmat(obj.conditions,obj.numDecks,1);
+            
+            %  Prepare trial list
+            obj.maxTrials = numel(obj.conditions);
             obj.trialList = randperm(obj.maxTrials);
+            
+            %  Prepare correct loop tracking
             obj.sequentialErrors = zeros(obj.maxTrials,1);
         end
         
