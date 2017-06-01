@@ -1,7 +1,7 @@
-function p = setAdcChannelMappings(p)
-%a2duino.setAdcChannelMappings
+function p = setAdcChannelMapping(p)
+%a2duino.setAdcChannelMapping
 %
-%  p.trial.a2duino.setAdcChannelMappings generates the subscripted
+%  p.trial.a2duino.setAdcChannelMapping generates the subscripted
 %  references to write a2duino analog data into the adc field
 %
 %  Shamelessly (and lovingly) copied from corresponding pldaps function.

@@ -117,6 +117,8 @@ volatile unsigned long pelletStartReleaseTicks;
 volatile unsigned long pelletCompleteReleaseTicks;
 volatile int pelletNumAttempts;
 
+volatile boolean fluidRewardComplete = false;
+
 // Event Listener
 boolean eventListenerListening = false;
 volatile boolean eventListenerEventDetected = false;
@@ -281,6 +283,10 @@ void processInstruction(int command) {
       writeeventListener();
       break;
 
+    case __writeFluidRewardStatus:
+      writeFluidRewardStatus();
+      break;
+
     case __writePelletReleaseStatus:
       writePelletReleaseStatus();
       break;
@@ -391,6 +397,12 @@ void writeeventListener() {
 }
 
 /*
+ * writeFluidRewardStatus
+ */
+void writeFluidRewardStatus() {
+  Serial.write(fluidRewardComplete);
+}
+/*
    writePelletReleaseStatus
 */
 void writePelletReleaseStatus() {
@@ -456,6 +468,7 @@ void stopeventListener() {
    startFluidReward
 */
 void startFluidReward() {
+  fluidRewardComplete = false;
   TCNT1 = 0;                                // Reset counter
   OCR1B = bytes2int(&instruction[0]);       // Set compare match register B to fluid reward duration
   OCR1A = OCR1B;                            // Make sure OCR1A == OCR1B
@@ -555,6 +568,7 @@ ISR(TIMER1_COMPB_vect) {
   else {
     digitalWrite(__rewardOutputPin, LOW);
     TIMSK1 &= (0 << OCIE1B);
+    fluidRewardComplete = true;
   }
 }
 
