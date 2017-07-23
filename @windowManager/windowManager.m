@@ -35,16 +35,19 @@ classdef windowManager < handle
     %  Lee Lovejoy
     %  January 2017
     %  ll2833@columbia.edu
+    %
+    %  Updates:
+    %  July 19, 2017 -- change windowRect from cell array to array
 
     
     properties (SetAccess = private)
-        currentWindow
+        currentWindows
     end
     
     properties (Hidden, SetAccess = private)
-        windowList = cell(0);
-        windowEnabled = false(0);
-        windowRect = cell(0);
+        windowList
+        windowEnabled
+        windowRect
     end
     
     methods
@@ -61,12 +64,22 @@ classdef windowManager < handle
             if(~any(ix))
                 
                 %  Window not defined, add it to the end of the list
-                obj.windowList{end+1} = name;
-                obj.windowEnabled(end+1) = true;
-                obj.windowRect{end+1} = rect;
+                obj.windowList = [obj.windowList {name}];
+                obj.windowEnabled = logical([obj.windowEnabled true]);
+                obj.windowRect = [obj.windowRect rect(:)];
             else
-                obj.windowRect{ix} = rect;
+                if(~isempty(rect))
+                    obj.windowRect(:,ix) = rect(:);
+                end
             end
+        end
+        
+        %  window
+        %
+        %  Function to output the window
+        function output = window(obj,varargin)
+            ix = strcmpi(varargin{1},obj.windowList);
+            output = obj.windowRect(:,ix);
         end
         
         %  enableWindow
@@ -114,13 +127,9 @@ classdef windowManager < handle
         function obj = updateWindows(obj,varargin)            
             if(nargin==2)
                 pos = varargin{1};
-                ix = false(size(obj.windowEnabled));
-                for i=1:length(obj.windowList)
-                    rect = obj.windowRect{i};
-                    ix(i) = pos(1) >= rect(1) && pos(1) <= rect(3) && pos(2) >= rect(2) && pos(2) <= rect(4);
-                end
+                ix = pos(1) >= obj.windowRect(1,:) & pos(1) <= obj.windowRect(3,:) & pos(2) >=  obj.windowRect(2,:) & pos(2) <= obj.windowRect(4,:);
                 if(any(ix & obj.windowEnabled))
-                    obj.currentWindow = obj.windowList(ix & obj.windowEnabled);
+                    obj.currentWindows = obj.windowList(ix & obj.windowEnabled);
                 else
                     obj.currentWindow = [];
                 end
@@ -142,10 +151,10 @@ classdef windowManager < handle
                     outcome = false;
                     warning('window %s is not defined\n',name);
                 else
-                    outcome = any(strcmpi(name,obj.currentWindow));
+                    outcome = any(strcmpi(name,obj.currentWindows));
                 end
             else
-                outcome = ~isempty(obj.currentWindow);
+                outcome = ~isempty(obj.currentWindows);
             end
         end
         
@@ -158,7 +167,7 @@ classdef windowManager < handle
                 fieldWidth = max(fieldWidth,length(obj.windowList{i}));
             end
             for i=1:length(obj.windowList)
-                fprintf('\t%*s:  [%6.3f %6.3f %6.3f %6.3f] ',fieldWidth,obj.windowList{i},obj.windowRect{i});
+                fprintf('\t%*s:  [%6.3f %6.3f %6.3f %6.3f] ',fieldWidth,obj.windowList{i},obj.windowRect(:,i));
                 if(obj.windowEnabled(i))
                     fprintf('(enabled)\n');
                 else

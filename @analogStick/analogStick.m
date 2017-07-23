@@ -167,42 +167,42 @@ classdef analogStick < handle
             obj.screenPosition(2) = obj.pCenter(2) - obj.pHeight*obj.normalizedPosition(2)/2;            
         end        
         
-        %  resetAnalogStickDisplay
-        %
-        %  Function to reset the display of analog stick position on the
-        %  overlay
-        function resetAnalogStickDisplay(obj)            
-            obj.xyRecord = [];
-        end
+%         %  resetAnalogStickDisplay
+%         %
+%         %  Function to reset the display of analog stick position on the
+%         %  overlay
+%         function resetAnalogStickDisplay(obj)            
+%             obj.xyRecord = [];
+%         end
         
-        %  updateDisplay
-        %
-        %  Function to update the overlay display with the current currsor
-        %  position
-        function updateDisplay(obj)
-            baseRect = [0 0 obj.displaySize obj.displaySize];
-            
-            centeredRect = CenterRectOnPoint(baseRect,obj.displayLocation(1),obj.displayLocation(2));
-
-            axesLines = 0.5*obj.displaySize*[-1 1 0 0 ; 0 0 -1 1];
-            
-            Screen('LineStipple',obj.overlayPtr,1);
-            Screen('DrawLines',obj.overlayPtr,axesLines,1,obj.frameColor,obj.displayLocation);
-            
-            Screen('FrameRect',obj.overlayPtr,obj.frameColor,centeredRect,2);
-            
-            xy = 0.5*obj.displaySize*[obj.normalizedPosition(1) -obj.normalizedPosition(2)]';
-            obj.xyRecord = [obj.xyRecord xy];
-                        
-            Screen('DrawDots',obj.overlayPtr,obj.xyRecord,2,obj.historyColor,obj.displayLocation,1);
-            Screen('DrawDots',obj.overlayPtr,xy,8,obj.currentColor,obj.displayLocation,1);
-            
-%            Screen('DrawDots',obj.displayPtr,obj.displaySize*[obj.normalizedPosition(1) obj.normalizedPosition(2)],1,obj.historyColor,[],1);
-%            tempPtr = Screen('OpenOffScreenWindow',obj.overlayPtr,12*[1 1 1],[0 0 obj.displaySize obj.displaySize]);
-%            Screen('DrawDots',tempPtr,obj.displaySize*[obj.normalizedPosition(1) obj.normalizedPosition(2)],4,obj.currentColor,[],1);
-%            Screen('DrawTexture',obj.overlayPtr,obj.displayPtr,[],centeredRect);
-%            Screen('DrawTexture',obj.overlayPtr,tempPtr,[],centeredRect); 
-%            Screen('Close',tempPtr);
-        end        
+%         %  updateDisplay
+%         %
+%         %  Function to update the overlay display with the current currsor
+%         %  position
+%         function updateDisplay(obj)
+%             baseRect = [0 0 obj.displaySize obj.displaySize];
+%             
+%             centeredRect = CenterRectOnPoint(baseRect,obj.displayLocation(1),obj.displayLocation(2));
+% 
+%             axesLines = 0.5*obj.displaySize*[-1 1 0 0 ; 0 0 -1 1];
+%             
+%             Screen('LineStipple',obj.overlayPtr,1);
+%             Screen('DrawLines',obj.overlayPtr,axesLines,1,obj.frameColor,obj.displayLocation);
+%             
+%             Screen('FrameRect',obj.overlayPtr,obj.frameColor,centeredRect,2);
+%             
+%             xy = 0.5*obj.displaySize*[obj.normalizedPosition(1) -obj.normalizedPosition(2)]';
+%             obj.xyRecord = [obj.xyRecord xy];
+%                         
+%             Screen('DrawDots',obj.overlayPtr,obj.xyRecord,2,obj.historyColor,obj.displayLocation,1);
+%             Screen('DrawDots',obj.overlayPtr,xy,8,obj.currentColor,obj.displayLocation,1);
+%             
+% %            Screen('DrawDots',obj.displayPtr,obj.displaySize*[obj.normalizedPosition(1) obj.normalizedPosition(2)],1,obj.historyColor,[],1);
+% %            tempPtr = Screen('OpenOffScreenWindow',obj.overlayPtr,12*[1 1 1],[0 0 obj.displaySize obj.displaySize]);
+% %            Screen('DrawDots',tempPtr,obj.displaySize*[obj.normalizedPosition(1) obj.normalizedPosition(2)],4,obj.currentColor,[],1);
+% %            Screen('DrawTexture',obj.overlayPtr,obj.displayPtr,[],centeredRect);
+% %            Screen('DrawTexture',obj.overlayPtr,tempPtr,[],centeredRect); 
+% %            Screen('Close',tempPtr);
+%        end        
     end
 end

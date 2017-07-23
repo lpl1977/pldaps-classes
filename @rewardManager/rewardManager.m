@@ -26,31 +26,33 @@ classdef rewardManager
             if(isempty(obj.giveFunc))
                 switch lower(obj.systemName)
                     case 'datapixx'
-                        obj.giveFunc = @rewardManager.datapixx;
                         obj.systemParams = cell2struct(obj.systemParams(2:2:end),obj.systemParams(1:2:end),2);
+                        obj.giveFunc = @(releaseDuration) rewardManager.datapixxDefault(...
+                            obj.systemParams.channel,obj.systemParams.ttlAmp,obj.systemParams.sampleRate,releaseDuration);
                 end
             end
         end
         
         %  Function to give reward
         function give(obj,varargin)
-            feval(obj.giveFunc,obj,varargin{:});
+            feval(obj.giveFunc,varargin{:});
         end
+    end
+    
+    methods (Static)
         
         %  Default delivery function for datapixx (fluid)
-        function obj = datapixx(obj,varargin)
-            releaseDuration = varargin{1};
-            bufferData = [obj.systemParams.ttlAmp*ones(1,round(releaseDuration*obj.systemParams.sampleRate)) 0];
+        function datapixxDefault(channel,ttlAmp,sampleRate,releaseDuration)
+            bufferData = [ttlAmp*ones(1,round(releaseDuration*sampleRate)) 0];
             maxFrames = length(bufferData);
             if(~Datapixx('IsReady'))
                 Datapixx('Open');
             end
-            Datapixx('WriteDacBuffer',bufferData,0,obj.systemParams.channel);
-            Datapixx('SetDacSchedule',0,obj.systemParams.sampleRate,maxFrames,obj.systemParams.channel);
+            Datapixx('WriteDacBuffer',bufferData,0,channel);
+            Datapixx('SetDacSchedule',0,sampleRate,maxFrames,channel);
             Datapixx StartDacSchedule;
             Datapixx RegWrRd;
         end
     end
-    
 end
 
