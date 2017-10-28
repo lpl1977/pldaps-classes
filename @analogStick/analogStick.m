@@ -25,7 +25,7 @@ classdef analogStick < handle
     properties (SetAccess = private)
         dataSource = 'datapixx.adc';
         channels = 'channels';
-        channelNumbers = 0;        
+        channelNumbers = 1;        
         movingAverage = 8;                
         position = NaN;
     end
@@ -33,7 +33,7 @@ classdef analogStick < handle
     properties (Hidden, SetAccess = private)
         channelIndices
         dataSampleCountChannelSubs
-        dataChannelSubs        
+        dataChannelSubs
     end
     
     methods
@@ -43,7 +43,6 @@ classdef analogStick < handle
         %  First argument is pldaps object and subsequent arguments are
         %  name and value pairs for setting properties.
         function obj = analogStick(p,varargin)
-            
             %  Set properties from user input
             for i=1:2:nargin-2
                 if(isprop(obj,varargin{i}))
@@ -52,7 +51,7 @@ classdef analogStick < handle
                     error('%s is not a valid property of %s',varargin{i},mfilename('class'));
                 end
             end
-                        
+            
             %  Generate subreferences into PLDAPS object
             S.type = '.';
             S.subs = 'trial';

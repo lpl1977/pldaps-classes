@@ -1,26 +1,33 @@
 classdef windowManager < handle
     %windowManager object for managing windows for position tracking
     %
-    %  To initialize with name value pairs:
-    %  obj = windowManager
+    %  To initialize:
+    %  obj = windowManager([property name],[property value])
+    %
+    %  To initialize with a function handle for position:
+    %  obj = windowManager('positionFunction',[function handle])
+    %  e.g. obj = windowManager('positionFunction',@() func.position)
     %
     %  To add or change a window
-    %  obj.addWindow([window tag],[rect])
+    %  obj.addWindow([window tag],[xmin xmax ymin ymax ...])
     %
     %  To disable a specific window
-    %  obj.disableWindow([tag])
+    %  obj.disableWindow([window tag])
     %
     %  To disable all windows
     %  obj.disableWindow('all')
     %
     %  To enable a specific window
-    %  obj.enableWindow([tag])
+    %  obj.enableWindow([window tag])
     %
     %  To enable all windows
     %  obj.enableWindow('all')
     %
-    %  To update windows with the current position
-    %  obj.updateWindows([pos])
+    %  To update windows with the current position (manually provided)
+    %  obj.updateWindows([position])
+    %
+    %  To update windows with the current position (from function handle)
+    %  obj.updateWindows
     %
     %  To check if position is in a specific window (should have updated
     %  windows first)
@@ -38,6 +45,9 @@ classdef windowManager < handle
     %
     %  Updates:
     %  July 19, 2017 -- change windowRect from cell array to array
+    %  October 29, 2017 -- change windowRect specification so can handle
+    %  scalar data; now specify as [xmin xmax ymin ymax ...]; add a
+    %  property to store function handle for position. 
 
     
     properties (SetAccess = private)
@@ -48,10 +58,25 @@ classdef windowManager < handle
         windowList
         windowEnabled
         windowRect
+        positionFunction
     end
     
     methods
 
+        %  Class Constructor
+        %
+        %  Arguments are name-value pairs
+        function obj = windowManager(varargin)
+            %  Set properties from user input
+            for i=1:2:nargin-1
+                if(isprop(obj,varargin{i}))
+                    obj.(varargin{i}) = varargin{i+1};
+                else
+                    error('%s is not a valid property of %s',varargin{i},mfilename('class'));
+                end
+            end
+        end
+        
         %  addWindow
         %
         %  Function to add a window to the list of windows or change an
@@ -124,19 +149,24 @@ classdef windowManager < handle
         %
         %  Function to check which of any enabled windows the position is
         %  currently in
-        function obj = updateWindows(obj,varargin)            
-            if(nargin==2)
+        function obj = updateWindows(obj,varargin)
+            if(nargin==1)
+                pos = feval(obj.positionFunction);
+            else
                 pos = varargin{1};
-                ix = pos(1) >= obj.windowRect(1,:) & pos(1) <= obj.windowRect(3,:) & pos(2) >=  obj.windowRect(2,:) & pos(2) <= obj.windowRect(4,:);
-                if(any(ix & obj.windowEnabled))
-                    obj.currentWindows = obj.windowList(ix & obj.windowEnabled);
-                else
-                    obj.currentWindow = [];
-                end
+            end
+            ix = true(size(obj.windowEnabled));
+            for i=1:2:length(pos)
+                ix = ix & pos(i) >= obj.windowRect(i,:) & pos(i) <= obj.windowRect(i+1,:); % & pos(2) >=  obj.windowRect(2,:) & pos(2) <= obj.windowRect(4,:);
+            end
+            if(any(ix & obj.windowEnabled))
+                obj.currentWindows = obj.windowList(ix & obj.windowEnabled);
+            else
+                obj.currentWindow = [];
             end
         end
         
-        %  in window
+        %  inWindow
         %
         %  Check if the cursor is in the specified window; if the argument
         %  is empty, return whether or not the cursor is in any window
@@ -167,7 +197,9 @@ classdef windowManager < handle
                 fieldWidth = max(fieldWidth,length(obj.windowList{i}));
             end
             for i=1:length(obj.windowList)
-                fprintf('\t%*s:  [%6.3f %6.3f %6.3f %6.3f] ',fieldWidth,obj.windowList{i},obj.windowRect(:,i));
+                fprintf('\t%*s:  [ ',fieldWidth,obj.windowList{i});
+                fprintf('%.3g ',obj.windowRect(:,i));
+                fprintf('] ');
                 if(obj.windowEnabled(i))
                     fprintf('(enabled)\n');
                 else
