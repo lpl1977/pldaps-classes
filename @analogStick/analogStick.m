@@ -1,8 +1,7 @@
 classdef analogStick < handle
     %analogStick object for accessing digitized data from analog stick
     %
-    %  To initialize:
-    %  obj = analogStick
+    %  To initialize with property name-value pairs:
     %  obj = analogStick([property name],[property value],...)
     %
     %  To update:
@@ -17,12 +16,20 @@ classdef analogStick < handle
     %  ll2833@columbia.edu
     %
     %  NB:
-    %  1.  Call class constructor any time prior to first trial
-    %  2.  Call update in the frameUpdate state of the frame cycle
+    %  1.  Call class constructor any time during or after the trial state
+    %  experimentPostOpenScreen.  The Datapixx ADC is initialized after
+    %  experimentPreOpenScreen but before experimentPostOpenScreen.
+    %
+    %  2.  experimentSetupFile will have been called prior to
+    %  experimentPreOpenScreen, so we must use a PLDAPS module or
+    %  initialize in the trial function.
+    %
+    %  3.  Call for update in the frameUpdate state of the frame cycle
     %
     %  Default properties are for Datapixx
     
     properties (SetAccess = private)
+        model = 'APEM HF10Y10 single axis';
         dataSource = 'datapixx.adc';
         channels = 'channels';
         channelNumbers = 1;        
@@ -34,6 +41,10 @@ classdef analogStick < handle
         channelIndices
         dataSampleCountChannelSubs
         dataChannelSubs
+    end
+    
+    methods (Static)
+        settings = module(p,state)
     end
     
     methods
@@ -87,5 +98,15 @@ classdef analogStick < handle
                 obj.position(i) = mean(subsref(p,obj.dataChannelSubs(obj.channelIndices(i),indx-obj.movingAverage:indx))); 
             end            
         end        
+        
+        %  disp
+        %
+        %  display some of the property values to stdout
+        function disp(obj)    
+            fprintf('\t         model:  %s\n',obj.model);
+            fprintf('\t    dataSource:  %s\n',obj.dataSource);
+            fprintf('\tchannelNumbers:  %s\n',sprintf('%d ',obj.channelNumbers));
+            fprintf('\t movingAverage:  %d\n',obj.movingAverage);
+        end
     end
 end
