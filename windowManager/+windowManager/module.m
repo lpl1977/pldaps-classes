@@ -33,16 +33,13 @@ else
     
     %  Execute the state dependent components    
     switch state
-        case p.trial.pldaps.trialStates.experimentPostOpenScreen
-            className = mfilename('class');
-            moduleName = strcat('module',strcat(upper(className(1)),className(2:end)));
+        case p.trial.pldaps.trialStates.experimentPreOpenScreen
+
+            %  Initialize the window manager object            
             fprintf('****************************************************************\n');
-            fprintf('%s will be called at priority %d\n',moduleName,p.trial.(moduleName).stateFunction.order);
-            
-%             %  Initialize the window manager object
-%             p.functionHandles.windowManagerObj = windowManager;
-%             fprintf('Initialized window manager\n');
-%             fprintf('****************************************************************\n');            
+            p.functionHandles.windowManagerObj = windowManager;
+            fprintf('Initialized window manager\n');
+            fprintf('****************************************************************\n');            
         
         case p.trial.pldaps.trialStates.frameUpdate
         
