@@ -1,5 +1,6 @@
 # temporary matlab files
 *.m~
+*ignore
 
 # saved preferences for PLDAPS
 Saved_pldaps_prefs*
