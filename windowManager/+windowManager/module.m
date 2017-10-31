@@ -21,11 +21,9 @@ if(nargin==0)
     %  Generate the settings structure for the module
     stateFunction.order = 20;
     stateFunction.acceptsLocationInput = false;
-    className = mfilename('class');
-    fileName = mfilename;
-    stateFunction.name = strcat(className,'.',fileName);    
-    moduleName = strcat('module',strcat(upper(className(1)),className(2:end)));
-    requestedStates = {'experimentPostOpenScreen' 'frameUpdate'};    
+    stateFunction.name = 'windowManager.module';
+    moduleName = 'moduleWindowManager';
+    requestedStates = {'experimentPostOpenScreen' 'frameUpdate' 'frameDraw'};    
     settings.(moduleName).stateFunction = stateFunction;
     settings.(moduleName).use = true;
     settings.(moduleName).requestedStates = requestedStates;
@@ -45,6 +43,11 @@ else
         
             %  Update the window manager object
             p.functionHandles.windowManagerObj.update;
+            
+        case p.trial.pldaps.trialStates.frameDraw
+            
+            %  Draw the windows
+            p.functionHandles.windowManagerObj.draw;
     end
 end
 end

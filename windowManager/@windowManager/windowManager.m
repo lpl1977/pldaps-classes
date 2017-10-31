@@ -24,6 +24,12 @@ classdef windowManager < dynamicprops
                 obj.(obj.groupNames{i}).update;
             end
         end
+        
+        function draw(obj)
+            for i=1:length(obj.groupNames)
+                obj.(obj.groupNames{i}).draw;
+            end
+        end
     end
     
 end
