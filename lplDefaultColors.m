@@ -15,7 +15,7 @@ p.defaultParameters.display.humanCLUT(17:25,:) = ...
     p.defaultParameters.display.bgColor        %  Gray
     1.000     0         0];         %  Red   
 p.defaultParameters.display.monkeyCLUT(17:25,:) = p.defaultParameters.display.humanCLUT(17:25,:);
-%p.defaultParameters.display.humanCLUT(26:34,:) = p.defaultParameters.display.humanCLUT(17:25,:);
+p.defaultParameters.display.humanCLUT(26:34,:) = p.defaultParameters.display.humanCLUT(17:25,:);
 
 %  For the sake of convenience define some names to references to the
 %  colors.  Remember hWhite means human white whereas bWhite means both
@@ -37,6 +37,8 @@ p.defaultParameters.display.clut.bCyan = 21*[1 1 1]';
 p.defaultParameters.display.clut.bScarlet = 22*[1 1 1]';
 p.defaultParameters.display.clut.bGray = 23*[1 1 1]';
 p.defaultParameters.display.clut.bRed = 24*[1 1 1]';
+p.defaultParameters.display.clut.hYellow = 27*[1 1 1]';
+
 
 %  Here are named colors for use in the "underlay" display pointer when
 %  using the software overlay--both screens will show these. Note I haven't

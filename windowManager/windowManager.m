@@ -1,5 +1,21 @@
 classdef windowManager < dynamicprops
     %windowManager object for containing windows for the window manager
+    %
+    %  To create a group with name value pairs
+    %  obj.createGroup(obj,'groupName',[group name],[name],[value])
+    %
+    %  To update all groups
+    %  obj.update
+    %
+    %  To draw all groups
+    %  obj.draw
+    %
+    %  To display all group windows to screen
+    %  obj.disp
+    %
+    %  Lee Lovejoy
+    %  ll2833@columbia.edu
+    %  November 2017
     
     properties
         groupNames
@@ -15,7 +31,7 @@ classdef windowManager < dynamicprops
             end
             varargin(i:i+1) = [];
             obj.addprop(groupName);
-            obj.(groupName) = windowManager.window(varargin{:});
+            obj.(groupName) = windowManager.windowGroup(varargin{:});
             obj.groupNames = [obj.groupNames {groupName}];
         end
         
@@ -29,6 +45,15 @@ classdef windowManager < dynamicprops
             for i=1:length(obj.groupNames)
                 obj.(obj.groupNames{i}).draw;
             end
+        end
+        
+        function disp(obj)
+            fprintf('****************************************************************\n');
+            for i=1:length(obj.groupNames)
+                fprintf('Windows for %s:\n',obj.groupNames{i});
+                obj.(obj.groupNames{i}).disp;
+            end
+            fprintf('****************************************************************\n');
         end
     end
     

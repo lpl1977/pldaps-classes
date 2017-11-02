@@ -19,23 +19,21 @@ function settings = module(p,state)
 if(nargin==0)
 
     %  Generate the settings structure for the module
-    stateFunction.order = 20;
-    stateFunction.acceptsLocationInput = false;
-    stateFunction.name = 'windowManager.module';
     moduleName = 'moduleWindowManager';
-    requestedStates = {'experimentPostOpenScreen' 'frameUpdate' 'frameDraw'};    
-    settings.(moduleName).stateFunction = stateFunction;
     settings.(moduleName).use = true;
-    settings.(moduleName).requestedStates = requestedStates;
+    settings.(moduleName).stateFunction.name = 'windowManager.module';
+    settings.(moduleName).stateFunction.order = 20;
+    settings.(moduleName).stateFunction.acceptsLocationInput = false;
+    settings.(moduleName).stateFunction.requestedStates = struct('experimentPreOpenScreen',true,'frameUpdate',true,'frameDraw',false);    
 else
     
     %  Execute the state dependent components    
     switch state
         case p.trial.pldaps.trialStates.experimentPreOpenScreen
 
-            %  Initialize the window manager object            
+            %  Initialize the window manager object  
+            p.functionHandles.windowManagerObj = windowManager;          
             fprintf('****************************************************************\n');
-            p.functionHandles.windowManagerObj = windowManager;
             fprintf('Initialized window manager\n');
             fprintf('****************************************************************\n');            
         

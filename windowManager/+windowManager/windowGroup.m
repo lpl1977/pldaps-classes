@@ -1,8 +1,8 @@
-classdef window < handle
-    %window object for managing windows for position tracking
+classdef windowGroup < handle
+    %windowGroup object for managing a group of windows for position tracking
     %
     %  To initialize with name value pairs:
-    %  obj = window('property name',[value],...)
+    %  obj = windowGroup('property name',[value],...)
     %
     %  To add or change a window
     %  obj.add([window tag],[rect])
@@ -49,14 +49,20 @@ classdef window < handle
         list
         rects
         occupied
+        windows
         
         positionFunc
         
         displayAreaSize
         displayAreaCenter
-        horizontalDisplayRange = [-1 1];
-        verticalDisplayRange = [-1 1];
-        useInvertedVerticalAxis = true;
+        displayAreaBorder
+        displayAreaAxes
+        
+        horizontalDataRange = [-1 1];
+        verticalDataRange = [-1 1];
+        dataOrigin = [0 0];
+        
+        useInvertedVerticalAxis = false;
         
         windowColor
         trajectoryColor
@@ -72,7 +78,6 @@ classdef window < handle
         currentDotWidth = 8;
         currentPosition
         
-        showDisplay = true;
         showDisplayAreaOutline = true;
         showDisplayAreaAxes = true;
         showTrajectoryTrace = false;
@@ -82,7 +87,7 @@ classdef window < handle
     methods
         
         %  Class constructor
-        function obj = window(varargin)
+        function obj = windowGroup(varargin)
             for i=1:2:nargin
                 if(isprop(obj,varargin{i}))
                     obj.(varargin{i}) = varargin{i+1};
@@ -93,6 +98,19 @@ classdef window < handle
             obj.showDisplayAreaOutline = obj.showDisplayAreaOutline && ~isempty(obj.borderColor);
             obj.showTrajectoryTrace = obj.showTrajectoryTrace && ~isempty(obj.trajectoryColor);
             obj.trajectoryRecord = NaN(2,obj.maxTrajectorySamples);
+            
+            %  Calculate boundaries of display area
+            baseRect = [0 0 obj.displayAreaSize(1)+4 obj.displayAreaSize(2)+4];
+            obj.displayAreaBorder = CenterRectOnPointd(baseRect,obj.displayAreaCenter(1),obj.displayAreaCenter(2));
+                        
+            %  Calculate position of area axes
+            obj.displayAreaAxes = [obj.horizontalDataRange obj.dataOrigin([1 1]) ; obj.dataOrigin([2 2]) obj.verticalDataRange];
+            obj.displayAreaAxes(1,:) = (obj.displayAreaAxes(1,:)-obj.dataOrigin(1))*obj.displayAreaSize(1)/diff(obj.horizontalDataRange);
+            if(obj.useInvertedVerticalAxis)
+                obj.displayAreaAxes(2,:) = -(obj.displayAreaAxes(2,:)-obj.dataOrigin(2))*obj.displayAreaSize(2)/diff(obj.verticalDataRange); 
+            else
+                obj.displayAreaAxes(2,:) = (obj.displayAreaAxes(2,:)-obj.dataOrigin(2))*obj.displayAreaSize(2)/diff(obj.verticalDataRange); 
+            end            
         end
         
         %  add
@@ -104,14 +122,29 @@ classdef window < handle
             name = varargin{1};
             rect = varargin{2};
             ix = strcmpi(name,obj.list);
+            
+            %  Convert rect to window in screen coordinates
+            window = rect([1 3 2 4]);
+            window([1 3]) = (window([1 3])-obj.dataOrigin(1))*obj.displayAreaSize(1)/diff(obj.horizontalDataRange) + obj.displayAreaCenter(1);
+            if(obj.useInvertedVerticalAxis)
+                window([2 4]) = -(window([2 4])-obj.dataOrigin(2))*obj.displayAreaSize(2)/diff(obj.verticalDataRange) + obj.displayAreaCenter(2); 
+            else
+                window([2 4]) = (window([2 4])-obj.dataOrigin(2))*obj.displayAreaSize(2)/diff(obj.verticalDataRange) + obj.displayAreaCenter(2); 
+            end
+            
+            %  Populate lists
             if(~any(ix))
                 
                 %  Window not defined, add it to the end of the list
                 obj.list = [obj.list {name}];
                 obj.rects = [obj.rects rect(:)];
+                obj.occupied = [obj.occupied ; false];
+                obj.windows = [obj.windows fix(window(:))];
             else
                 if(~isempty(rect))
                     obj.rects(:,ix) = rect(:);
+                    obj.windows(:,ix) = fix(window(:));
+                    obj.occupied(ix) = false;
                 end
             end
         end
@@ -132,7 +165,7 @@ classdef window < handle
                 fieldWidth = max(fieldWidth,length(obj.list{i}));
             end
             for i=1:length(obj.list)
-                fprintf('%*s:  [%s]\n',fieldWidth,obj.list{i},sprintf('% g',obj.rects(:,i)));
+                fprintf('\t%*s:  [%s]\n',fieldWidth,obj.list{i},sprintf('% g',obj.rects(:,i)));
             end
         end
         
@@ -143,8 +176,7 @@ classdef window < handle
         function obj = update(obj)
             
             %  Check position against windows
-            pos = feval(obj.positionFunc);
-            
+            pos = feval(obj.positionFunc);            
             for i=1:numel(obj.occupied)
                 obj.occupied(i) = true;
                 for j=1:length(pos)
@@ -152,18 +184,22 @@ classdef window < handle
                 end
             end
             
-            %  update trajectory record if in use
-            if(obj.showTrajectoryTrace)
-                ix = mod(obj.trajectorySampleCount,obj.maxTrajectorySamples)+1;
-                obj.trajectoryRecord(:,ix) = pos(:)-obj.displayAreaCenter(:);
-                obj.trajectorySampleCount = obj.trajectorySampleCount+1;
-                obj.currentPosition = pos(:)-obj.displayAreaCenter(:);
-            end
+            %  Update current position and trajectory record
+            pos(1) = (pos(1)-obj.dataOrigin(1))*obj.displayAreaSize(1)/diff(obj.horizontalDataRange);
+            if(obj.useInvertedVerticalAxis)
+                pos(2) = -(pos(2)-obj.dataOrigin(2))*obj.displayAreaSize(2)/diff(obj.verticalDataRange);
+            else
+                pos(2) = (pos(2)-obj.dataOrigin(2))*obj.displayAreaSize(2)/diff(obj.verticalDataRange);
+            end            
+            obj.currentPosition = pos(:);
+            ix = mod(obj.trajectorySampleCount,obj.maxTrajectorySamples)+1;
+            obj.trajectoryRecord(:,ix) = pos(:);
+            obj.trajectorySampleCount = obj.trajectorySampleCount+1;
         end
         
-        %  Flush trajectory record
+        %  flush trajectory record
         function flushTrajectoryRecord(obj)
-            obj.trajectoryRecord(:) = NaN;
+            obj.trajectoryRecord = NaN(2,obj.maxTrajectorySamples);
         end
         
         %  draw
@@ -171,83 +207,25 @@ classdef window < handle
         %  Draw the windows and trajectory to the console display
         function draw(obj)
             
-%             %  Draw in windows
-%             windowRects = obj.rects;
-%             if(obj.useInvertedVerticalAxis)
-%                 windowRects(2,:) = -windowRects(2,:);
-%                 windowRects(4,:) = -windowRects(4,:);
-%             end
-%             windowRects([1 3],:) = (windowRects([1 3],:)-mean(obj.horizontalDisplayRange))*obj.displayAreaSize(1)/diff(obj.horizontalDisplayRange);
-%             windowRects([1 3],:) = windowRects([1 3],:) + obj.displayAreaCenter(1);
-%             windowRects([2 4],:) = (windowRects([2 4],:)-mean(obj.verticalDisplayRange))*obj.displayAreaSize(2)/diff(obj.verticalDisplayRange);
-%             windowRects([2 4],:) = windowRects([2 4],:) + obj.displayAreaCenter(2);
-%             
-%             %  Draw in windows
-%             Screen('FrameRect',obj.windowPtr,obj.windowColor,windowRects,1);
-
-
-% if(size(obj.rects,1)==1)
-%     windowRects = obj.rects([1 3 2 4]);
-%     windowRects(3) = windowRects(3)-windowRects(1);
-%     windowRects(4) = windowRects(4)-windowRects(2);
-% else
-%     windowRects = obj.rects(:,[1 3 2 4]);
-%     windowRects(:,3) = windowRects(:,3)-windowRects(:,1);
-%     windowRects(:,4) = windowRects(:,4)-windowRects(:,2);
-% end
-windowRects = obj.rects([1 3 2 4],:);
-
-Screen('FrameRect',obj.windowPtr,obj.windowColor,windowRects,1);
-            %  Trajectory and current position
-            if(obj.showTrajectoryTrace)
-                Screen('DrawDots',obj.windowPtr,obj.trajectoryRecord,obj.trajectoryDotWidth,obj.trajectoryColor,obj.displayAreaCenter,1);
-                Screen('DrawDots',obj.windowPtr,obj.currentPosition,obj.currentDotWidth,obj.currentColor,obj.displayAreaCenter,1);
+            %  Axes and outline of display area
+            if(obj.showDisplayAreaAxes)
+                Screen('LineStipple',obj.windowPtr,1,1,logical([0 0 0 1 0 0 0 1 0 0 0 1 0 0 0 1]));
+                Screen('DrawLines',obj.windowPtr,obj.displayAreaAxes,1,obj.borderColor,obj.displayAreaCenter);
+                Screen('LineStipple',obj.windowPtr,0);                
             end
-        end
-        
-        %  Update display
-        function updateDisplay(obj)
-            
-            %  Horizontal and vertical axes
-            if(obj.showDisplayAreaOutline && obj.showDisplayAreaAxes)
-                axesLines = [-1 1 0 0 ; 0 0 -1 1];
-                axesLines(1,:) = 0.5*obj.displayAreaSize(1)*axesLines(1,:);
-                axesLines(2,:) = 0.5*obj.displayAreaSize(2)*axesLines(2,:);
-                Screen('LineStipple',obj.windowPtr,1);
-                Screen('DrawLines',obj.windowPtr,axesLines,1,obj.borderColor,obj.displayAreaCenter);
-                Screen('LineStipple',obj.windowPtr,0);
-            end
-            
-            %  Outline of display area window
             if(obj.showDisplayAreaOutline)
-                baseRect = [0 0 obj.displayAreaSize(1)+10 obj.displayAreaSize(2)+10];
-                centeredRect = CenterRectOnPointd(baseRect,obj.displayAreaCenter(1),obj.displayAreaCenter(2));
-                Screen('FrameRect',obj.windowPtr,obj.borderColor,centeredRect,3);
+                Screen('FrameRect',obj.windowPtr,obj.borderColor,obj.displayAreaBorder,2);
             end
             
             %  Draw in windows
-            windowRects = obj.rects;
-            if(obj.useInvertedVerticalAxis)
-                windowRects(2,:) = -windowRects(2,:);
-                windowRects(4,:) = -windowRects(4,:);
-            end
-            windowRects([1 3],:) = (windowRects([1 3],:)-mean(obj.horizontalDisplayRange))*obj.displayAreaSize(1)/diff(obj.horizontalDisplayRange);
-            windowRects([1 3],:) = windowRects([1 3],:) + obj.displayAreaCenter(1);
-            windowRects([2 4],:) = (windowRects([2 4],:)-mean(obj.verticalDisplayRange))*obj.displayAreaSize(2)/diff(obj.verticalDisplayRange);
-            windowRects([2 4],:) = windowRects([2 4],:) + obj.displayAreaCenter(2);
-            
-            %  Draw in windows
-            Screen('FrameRect',obj.windowPtr,obj.windowColor,windowRects,1);
-            
+            Screen('FrameRect',obj.windowPtr,obj.windowColor,obj.windows,1);
+
             %  Trajectory and current position
             if(obj.showTrajectoryTrace)
-                Screen('LineStipple',obj.windowPtr,1);
-                Screen('DrawLines',obj.windowPtr,obj.trajectoryRecord,1,obj.trajectoryColor,obj.displayAreaCenter);
-                Screen('LineStipple',obj.windowPtr,0);
                 Screen('DrawDots',obj.windowPtr,obj.trajectoryRecord,obj.trajectoryDotWidth,obj.trajectoryColor,obj.displayAreaCenter,1);
             end
             if(obj.showCurrentPosition)
-                Screen('DrawDots',obj.windowPtr,[obj.xPos obj.yPos]',obj.currentDotWidth,obj.currentColor,obj.displayAreaCenter,1);
+                Screen('DrawDots',obj.windowPtr,obj.currentPosition,obj.currentDotWidth,obj.currentColor,obj.displayAreaCenter,1);
             end
         end
     end

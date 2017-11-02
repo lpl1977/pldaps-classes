@@ -20,14 +20,12 @@ function settings = module(p,state)
 if(nargin==0)
     
     %  Generate the settings structure for the module
-    stateFunction.order = 0;
-    stateFunction.acceptsLocationInput = false;
-    stateFunction.name = 'analogStick.module';
-    requestedStates = {'experimentPostOpenScreen' 'frameUpdate'};
     moduleName = 'moduleAnalogStick';
-    settings.(moduleName).stateFunction = stateFunction;
     settings.(moduleName).use = true;
-    settings.(moduleName).requestedStates = requestedStates;
+    settings.(moduleName).stateFunction.name = 'analogStick.module';
+    settings.(moduleName).stateFunction.order = 10;
+    settings.(moduleName).stateFunction.acceptsLocationInput = false;
+    settings.(moduleName).stateFunction.requestedStates = struct('experimentPostOpenScreen',true,'frameUpdate',true);    
     
     %  Settings structure for analogStick
     temp = properties('analogStick');
@@ -37,13 +35,11 @@ else
     %  Execute the state dependent components
     switch state
         case p.trial.pldaps.trialStates.experimentPostOpenScreen
-            moduleName = 'moduleAnalogStick';
-            fprintf('****************************************************************\n');
-            fprintf('%s will be called at priority %d\n',moduleName,p.trial.(moduleName).stateFunction.order);
-            
+
             %  Initialize the analog stick object
             inputArgs = [fieldnames(p.trial.analogStick) struct2cell(p.trial.analogStick)]';
             p.functionHandles.analogStickObj = analogStick(p,inputArgs{:});
+            fprintf('****************************************************************\n');
             fprintf('Initialized analog stick:\n');
             p.functionHandles.analogStickObj.disp;
             fprintf('****************************************************************\n');
