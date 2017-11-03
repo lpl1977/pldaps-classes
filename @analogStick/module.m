@@ -37,8 +37,12 @@ else
         case p.trial.pldaps.trialStates.experimentPostOpenScreen
 
             %  Initialize the analog stick object
-            inputArgs = [fieldnames(p.trial.analogStick) struct2cell(p.trial.analogStick)]';
-            p.functionHandles.analogStickObj = analogStick(p,inputArgs{:});
+            if(isField(p.trial,'analogStick'))
+                inputArgs = [fieldnames(p.trial.analogStick) struct2cell(p.trial.analogStick)]';
+                p.functionHandles.analogStickObj = analogStick(p,inputArgs{:});
+            else
+                p.functionHandles.analogStickObj = analogStick(p);
+            end
             fprintf('****************************************************************\n');
             fprintf('Initialized analog stick:\n');
             p.functionHandles.analogStickObj.disp;

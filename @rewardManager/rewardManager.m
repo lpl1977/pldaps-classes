@@ -1,11 +1,22 @@
-classdef rewardManager
-    %rewardManager Manage reward delivery between systems
+classdef rewardManager < handle
+    %rewardManager object for managing reward systems
+    %
+    %  To initialize with property name-value pairs:
+    %  obj = rewardManager([property name],[property value],...)
+    %
+    %  To give reward
+    %  obj = rewardManager.give(amount)
+    %
+    %  Lee Lovejoy
+    %  November 2017
+    %  ll2833@columbia.edu
     
     properties
-        systemName
-        systemParams
+        system = 'datapixx';
+        channel = 3;
+        ttlAmp = 3;
+        sampleRate = 1000;
         giveFunc
-        defaultReward
     end
     
     methods
@@ -24,26 +35,28 @@ classdef rewardManager
             
             %  Set give function
             if(isempty(obj.giveFunc))
-                switch lower(obj.systemName)
+                switch lower(obj.system)
                     case 'datapixx'
-                        obj.systemParams = cell2struct(obj.systemParams(2:2:end),obj.systemParams(1:2:end),2);
-                        obj.giveFunc = @(releaseDuration) rewardManager.datapixxDefault(...
-                            obj.systemParams.channel,obj.systemParams.ttlAmp,obj.systemParams.sampleRate,releaseDuration);
+                        obj.giveFunc = @(amount) rewardManager.datapixxGive(obj.channel,obj.ttlAmp,obj.sampleRate,amount);
                 end
             end
         end
         
         %  Function to give reward
         function give(obj,varargin)
-            feval(obj.giveFunc,varargin{:});
+            if(nargin==2)
+                feval(obj.giveFunc,varargin{1});
+            end
         end
     end
     
     methods (Static)
         
-        %  Default delivery function for datapixx (fluid)
-        function datapixxDefault(channel,ttlAmp,sampleRate,releaseDuration)
-            bufferData = [ttlAmp*ones(1,round(releaseDuration*sampleRate)) 0];
+        settings = module(p,state)
+        
+        %  Functions to give reward
+        function datapixxGive(channel,ttlAmp,sampleRate,amount)
+            bufferData = [ttlAmp*ones(1,round(amount*sampleRate)) 0];
             maxFrames = length(bufferData);
             if(~Datapixx('IsReady'))
                 Datapixx('Open');
@@ -53,6 +66,7 @@ classdef rewardManager
             Datapixx StartDacSchedule;
             Datapixx RegWrRd;
         end
+        
     end
 end
 

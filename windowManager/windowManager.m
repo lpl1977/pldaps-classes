@@ -19,9 +19,25 @@ classdef windowManager < dynamicprops
     
     properties
         groupNames
+        overlayEnabled = true;
     end
     
     methods
+        
+        %  class constructor
+        function obj = windowManager(varargin)
+            for i=1:2:nargin
+                if(isprop(obj,varargin{i}))
+                    obj.(varargin{i}) = varargin{i+1};
+                else
+                    error('%s is not a valid property of %s',varargin{i},mfilename('class'));
+                end
+            end
+        end
+        
+        %  createGroup
+        %
+        %  Function to create a window group.
         function obj = createGroup(obj,varargin)
             for i=1:2:nargin
                 if(strcmpi(varargin{i},'groupName'))
@@ -33,11 +49,17 @@ classdef windowManager < dynamicprops
             obj.addprop(groupName);
             obj.(groupName) = windowManager.windowGroup(varargin{:});
             obj.groupNames = [obj.groupNames {groupName}];
+            if(obj.overlayEnabled)
+                obj.(groupName).prepareOverlay;
+            end
         end
         
         function update(obj)
             for i=1:length(obj.groupNames)
                 obj.(obj.groupNames{i}).update;
+                if(obj.overlayEnabled)
+                    obj.(obj.groupNames{i}).updateDisplay;
+                end
             end
         end
         
