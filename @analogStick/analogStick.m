@@ -54,6 +54,7 @@ classdef analogStick < handle
         %  First argument is pldaps object and subsequent arguments are
         %  name and value pairs for setting properties.
         function obj = analogStick(p,varargin)
+            
             %  Set properties from user input
             for i=1:2:nargin-2
                 if(isprop(obj,varargin{i}))
