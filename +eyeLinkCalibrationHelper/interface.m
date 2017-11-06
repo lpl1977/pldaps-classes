@@ -9,6 +9,10 @@ function interface(p,varargin)
 %  May be used for calibration, validation and drift correction.  Control
 %  operation from the EyeLink GUI.  There is no user control from keyboard.
 %
+%  Prior to using, please run
+%  createRigPrefs(eyeLinkCalibrationHelper.settings) to add some default
+%  fields to the PLDAPS settings.
+%
 %  Lee Lovejoy
 %  July 23, 2017
 %  ll2833@columbia.edu
@@ -17,18 +21,14 @@ function interface(p,varargin)
 %  November 2017 use default settings from an eyeLinkCalibrationHelper
 %  structure in p.trial.
 
-%  Make sure EyeLink is connected; if not, return.
-if(Eyelink('IsConnected')~=1)
-    fprintf('WARNING:  EyeLink is not connected!\n');
-    fprintf('****************************************************************\n');
-    return;
-else
-    fprintf('Calibration interface:  use EyeLink GUI to proceed.\n');
-    fprintf('Exit setup on EyeLink side to quit this interface.\n');
-end
+%  Instructions for user
+fprintf('****************************************************************\n');
+fprintf('Starting EyeLink calibration helper\n');
+fprintf('Use EyeLink GUI to proceed.\n');
+fprintf('EXIT SETUP on EyeLink side to quit this interface.\n');
 
-%  Create the calibClass object
-calibObj = eyeLinkCalibrationHelper.calibClass(p,varargin{:});
+%  Create the calib object
+calibObj = eyeLinkCalibrationHelper.calib(p,varargin{:});
 
 %  Start in Camera Setup, where we can control operation from EyeLink GUI
 Eyelink('StartSetup');
@@ -103,10 +103,8 @@ while(bitand(Eyelink('CurrentMode'),calibObj.eyeLinkControlStruct.IN_SETUP_MODE)
     %  record mode from the EyeLink GUI.
 end
 
-
 fprintf('\n');
 fprintf('Done with EyeLink calibration interface.\n');
-fprintf('If you called manually during pause, type "dbcont" to continue.\n');
-fprintf('If you called by module, PLDAPS should automatically resume.\n');
+fprintf('Type "dbcont" to continue.\n');
 fprintf('****************************************************************\n');
 end
