@@ -97,6 +97,7 @@ classdef analogStick < handle
             %  Capture position data
             for i=1:numel(obj.channelNumbers)
                 obj.position(i) = mean(subsref(p,obj.dataChannelSubs(obj.channelIndices(i),indx-obj.movingAverage:indx))); 
+                obj.position(i) = min(max(obj.position(i),0),5);
             end            
         end        
         
