@@ -4,7 +4,7 @@ function lplColors(p)
 %  Put additional colors into the human and monkey CLUT
 p.defaultParameters.display.humanCLUT(16,:) = [0 0 1];
 p.defaultParameters.display.monkeyCLUT(16,:) = p.defaultParameters.display.bgColor;
-p.defaultParameters.display.humanCLUT(17:23,:) = [...
+p.defaultParameters.display.humanCLUT(17:24,:) = [...
     0.0000    0.4470    0.7410      %  Blue
     0.8500    0.3250    0.0980      %  Orange
     0.9290    0.6940    0.1250      %  Yellow
@@ -14,20 +14,20 @@ p.defaultParameters.display.humanCLUT(17:23,:) = [...
     0.6350    0.0780    0.1840      %  Scarlet
     1.0000    0.7529    0.7961      %  Pink
     ];
-p.defaultParameters.display.monkeyCLUT(17:23,:) = p.defaultParameters.display.humanCLUT(17:23,:);
-p.defaultParameters.display.humanCLUT(24:32,:) = p.defaultParameters.display.humanCLUT(17:23,:);
+p.defaultParameters.display.monkeyCLUT(17:24,:) = p.defaultParameters.display.humanCLUT(17:24,:);
+p.defaultParameters.display.humanCLUT(25:32,:) = p.defaultParameters.display.humanCLUT(17:24,:);
 
-% %  For the sake of convenience define some names to references to the
-% %  colors.  Remember hWhite means human white whereas bWhite means both
-% %  white.  m{color} seems like a really bad idea.
-% p.defaultParameters.display.clut.hWhite = 5*[1 1 1]';
+%  For the sake of convenience define some names to references to the
+%  colors.  Remember hWhite means human white whereas bWhite means both
+%  white.  m{color} seems like a really bad idea.
+p.defaultParameters.display.clut.hWhite = 5*[1 1 1]';
 % p.defaultParameters.display.clut.bWhite = 7*[1 1 1]';
-% p.defaultParameters.display.clut.hCyan = 8*[1 1 1]';
+p.defaultParameters.display.clut.hCyan = 8*[1 1 1]';
 % p.defaultParameters.display.clut.bBlack = 9*[1 1 1]';
-% p.defaultParameters.display.clut.hGreen = 12*[1 1 1]';
+p.defaultParameters.display.clut.hGreen = 12*[1 1 1]';
 % p.defaultParameters.display.clut.hRed = 13*[1 1 1]';
 % p.defaultParameters.display.clut.hBlack =14*[1 1 1]';
-% p.defaultParameters.display.clut.hBlue = 15*[1 1 1]';
+p.defaultParameters.display.clut.hBlue = 15*[1 1 1]';
 % p.defaultParameters.display.clut.bBlue = 16*[1 1 1]';
 % p.defaultParameters.display.clut.bOrange = 17*[1 1 1]';
 % p.defaultParameters.display.clut.bYellow = 18*[1 1 1]';
