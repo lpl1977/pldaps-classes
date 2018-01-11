@@ -56,8 +56,6 @@ classdef windowGroup < handle
         %  Subsequent properties are for display of windows and
         %  trajectories to the console monitor
         
-        overlayEnabled = false;
-        
         displayAreaSize = [1 1];
         displayAreaCenter = [0 0];
         displayAreaBorder

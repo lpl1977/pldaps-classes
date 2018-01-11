@@ -1,10 +1,12 @@
 function lplColors(p)
 %lplDefaultColors
 
+%  look at defaultColors !!!
+
 %  Put additional colors into the human and monkey CLUT
 p.defaultParameters.display.humanCLUT(16,:) = [0 0 1];
 p.defaultParameters.display.monkeyCLUT(16,:) = p.defaultParameters.display.bgColor;
-p.defaultParameters.display.humanCLUT(17:24,:) = [...
+p.defaultParameters.display.humanCLUT(17:26,:) = [...
     0.0000    0.4470    0.7410      %  Blue
     0.8500    0.3250    0.0980      %  Orange
     0.9290    0.6940    0.1250      %  Yellow
@@ -13,9 +15,11 @@ p.defaultParameters.display.humanCLUT(17:24,:) = [...
     0.3010    0.7450    0.9330      %  Cyan
     0.6350    0.0780    0.1840      %  Scarlet
     1.0000    0.7529    0.7961      %  Pink
+    0.0000    0.5020    0.5020      %  Teal
+    0.9608    0.9608    0.8627      %  Beige
     ];
-p.defaultParameters.display.monkeyCLUT(17:24,:) = p.defaultParameters.display.humanCLUT(17:24,:);
-p.defaultParameters.display.humanCLUT(25:32,:) = p.defaultParameters.display.humanCLUT(17:24,:);
+p.defaultParameters.display.monkeyCLUT(17:26,:) = p.defaultParameters.display.humanCLUT(17:26,:);
+p.defaultParameters.display.humanCLUT(27:36,:) = p.defaultParameters.display.humanCLUT(17:26,:);
 
 %  For the sake of convenience define some names to references to the
 %  colors.  Remember hWhite means human white whereas bWhite means both
@@ -40,15 +44,19 @@ p.defaultParameters.display.clut.hBlue = 15*[1 1 1]';
 % p.defaultParameters.display.clut.hYellow = 27*[1 1 1]';
 % 
 % 
-% %  Here are named colors for use in the "underlay" display pointer when
-% %  using the software overlay--both screens will show these. Note I haven't
-% %  put these in p.defaultParameters.display.clut because they are not
-% %  indexed colors but instead RGB triples.
-% p.defaultParameters.display.colors.blue = p.defaultParameters.display.humanCLUT(17,:);
-% p.defaultParameters.display.colors.orange = p.defaultParameters.display.humanCLUT(18,:);
-% p.defaultParameters.display.colors.yellow = p.defaultParameters.display.humanCLUT(19,:);
-% p.defaultParameters.display.colors.purple = p.defaultParameters.display.humanCLUT(20,:);
-% p.defaultParameters.display.colors.green = p.defaultParameters.display.humanCLUT(21,:);
-% p.defaultParameters.display.colors.cyan = p.defaultParameters.display.humanCLUT(22,:);
-% p.defaultParameters.display.colors.scarlet = p.defaultParameters.display.humanCLUT(23,:);
-% p.defaultParameters.display.colors.black = [0 0 0];
+%  Here are named colors for use in the "underlay" display pointer when
+%  using the software overlay--both screens will show these. Note I haven't
+%  put these in p.defaultParameters.display.clut because they are not
+%  indexed colors but instead RGB triples.
+p.defaultParameters.display.colors.blue = p.defaultParameters.display.humanCLUT(17,:);
+p.defaultParameters.display.colors.orange = p.defaultParameters.display.humanCLUT(18,:);
+p.defaultParameters.display.colors.yellow = p.defaultParameters.display.humanCLUT(19,:);
+p.defaultParameters.display.colors.purple = p.defaultParameters.display.humanCLUT(20,:);
+p.defaultParameters.display.colors.green = p.defaultParameters.display.humanCLUT(21,:);
+p.defaultParameters.display.colors.cyan = p.defaultParameters.display.humanCLUT(22,:);
+p.defaultParameters.display.colors.scarlet = p.defaultParameters.display.humanCLUT(23,:);
+p.defaultParameters.display.colors.pink = p.defaultParameters.display.humanCLUT(24,:);
+p.defaultParameters.display.colors.teal = p.defaultParameters.display.humanCLUT(25,:);
+p.defaultParameters.display.colors.beige = p.defaultParameters.display.humanCLUT(26,:);
+
+p.defaultParameters.display.colors.black = [0 0 0];
